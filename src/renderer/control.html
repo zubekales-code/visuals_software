@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; media-src 'self' file: blob:; img-src 'self' file: data:; style-src 'self' 'unsafe-inline' file:">
+<title>VJ pult — Etapa 0: test výkonu</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <strong>VJ pult</strong><span class="tag">v0.1 · Etapa 0 test výkonu</span>
+  <div class="meters" id="meters"></div>
+  <div class="stat" id="topFps">— fps</div>
+  <div class="stat" id="topGpu">GPU — ms</div>
+  <div class="stat" id="topProj">výstup: —</div>
+  <button id="black" class="danger" title="Nouzová černá (Esc)">ČERNÁ · Esc</button>
+</header>
+
+<main class="grid">
+  <section class="panel layers">
+    <div class="head"><h2>Vrstvy</h2><span class="note">1 = dole · klávesy 1–8 zapnout/vypnout</span></div>
+    <div id="layers"></div>
+    <div class="row">
+      <button id="presetGate" class="primary" title="6 shaderů + video = 7 vrstev, glow zap, 1920×1080">Sestava brány (7 vrstev + video)</button>
+      <button id="presetAll">Zátěž: všech 8</button>
+      <button id="presetNone">Vše vypnout</button>
+    </div>
+  </section>
+
+  <section class="panel out">
+    <div class="head"><h2>Výstup</h2></div>
+    <label class="row">Rozlišení
+      <select id="outRes">
+        <option value="1920x1080">1920×1080</option>
+        <option value="1280x720">1280×720</option>
+        <option value="2560x1440">2560×1440</option>
+        <option value="640x360">640×360 (jen zkouška)</option>
+      </select>
+    </label>
+    <label class="row"><input type="checkbox" id="glowOn"> Glow
+      <input type="range" id="glowAmt" min="0" max="1" step="0.01"></label>
+    <label class="row"><input type="checkbox" id="previewOn"> Živý náhled v pultu</label>
+    <div class="row" id="displays"></div>
+    <p class="note">Výstup patří na projektor (HDMI). Displej, na kterém hraješ, přepni na 60 Hz.</p>
+  </section>
+
+  <section class="panel audio">
+    <div class="head"><h2>Zvuk</h2><span class="note" id="audioStatus"></span></div>
+    <label class="row">Zdroj
+      <select id="audioSrc">
+        <option value="demo">Demo signál 122 BPM</option>
+        <option value="wav">Soubor (wav)</option>
+        <option value="input">Vstup (kabel → line-in)</option>
+      </select>
+    </label>
+    <div class="row" id="wavRow"><button id="pickWav">Vybrat hudbu…</button><span class="note" id="wavName">—</span><button id="playWav">▶ / ❚❚ (mezerník)</button></div>
+    <div class="row" id="inRow"><select id="device"></select><button id="loadDevices">Načíst vstupy</button></div>
+    <label class="row">Citlivost úderů <input type="range" id="sens" min="0.3" max="2" step="0.05"></label>
+  </section>
+
+  <section class="panel test">
+    <div class="head"><h2>Test výkonu</h2><span class="note">klávesa T = 1 min</span></div>
+    <div class="row">
+      <button data-test="1" class="primary">Spustit 1 min</button>
+      <button data-test="10">10 min</button>
+      <button data-test="120">2 hodiny</button>
+    </div>
+    <div id="testStatus" class="note">Brána Etapy 0: 60 fps se 7 vrstvami a videem, bez trhání. Zpráva se uloží do složky „zpravy“.</div>
+    <table class="stats"><tbody id="statsBody"></tbody></table>
+    <div id="errors" class="err" hidden></div>
+  </section>
+
+  <section class="panel preview">
+    <div class="head"><h2>Náhled výstupu</h2><span class="note">zmenšený, stejný kompozitor</span></div>
+    <canvas id="preview" width="640" height="360"></canvas>
+  </section>
+</main>
+<script src="control.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+zpravy/
+*.log
+content/audio/*
+!content/audio/.gitkeep

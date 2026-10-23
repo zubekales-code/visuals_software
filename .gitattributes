@@ -1,0 +1,4 @@
+* text=auto
+*.bat text eol=crlf
+*.webm binary
+*.mp4 binary
