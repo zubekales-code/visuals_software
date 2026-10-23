@@ -4,7 +4,8 @@ Electron + WebGL2 + TypeScript. Sestavuje esbuild (`build.mjs`) do `dist/`. Žá
 
 ## Procesy a okna
 ```
-main (Node)  ── src/main/main.ts      okna, obsah z disku, IPC, zápis zpráv, živé načítání shaderů
+main (Node)  ── src/main/main.ts      okna, monitory (hot-plug), IPC, zápis zpráv, živé načítání knihovny
+             ── src/main/library.ts   knihovna VISUALS SOFTWARE\\knihovna: základní balíček, import (+ převod videa), sady
   ├─ pult    ── src/renderer/control.ts  PRAVDA o stavu (AppState), autosave, klávesy, náhled
   └─ výstup  ── src/renderer/output.ts   zvuk + kompozitor na projektor, měření, test výkonu
 preload      ── src/main/preload.ts   jediné API oken (window.vj, typ VjApi v src/shared/types.ts)
@@ -12,6 +13,10 @@ preload      ── src/main/preload.ts   jediné API oken (window.vj, typ VjApi
 Stav (`AppState`, src/shared/types.ts): 8 vrstev × 10 klipů. Klip = `{ content, params }`, params přepisují výchozí hodnoty z hlavičky shaderu.
 Vrstva: `on`, `opacity`, `scale`, `blend` (normal/add/screen), `active` = hrající sloupec. Kompozitor kreslí `activeClip(vrstva)`.
 Klávesy klipů: `src/renderer/keys.ts`. Náhledy klipů (1 snímek): `src/renderer/thumbs.ts`. Vzhled pultu = `INTERFACE KONCEPT/interface_koncept.html`.
+Pult: `control.ts` (lišta, mřížka, knihovna, vlastnosti, zvuk), `ui/dom.ts` (prvky, menu, zprávy), `ui/layout.ts` (táhla, velikosti v localStorage).
+Hodnoty klipu se vždy nahrazují novým objektem (`clip.params = {...}`) — kompozitor pozná změnu podle reference.
+Cesty: `BASE_DIR` = VISUALS SOFTWARE (když aplikace běží z `…\app` vedle start.bat), knihovna `BASE_DIR\knihovna`, zprávy `BASE_DIR\zpravy`.
+`stav.md` v repu = průběžný stav projektu; při startu se kopíruje do `VISUALS SOFTWARE\STAV\stav.md`.
 Tok: pult → `state` → main → výstup. Výstup → `audio-frame` (každý snímek) + `stats` (2×/s) → pult.
 Klávesy stisknuté ve výstupu jdou do pultu (`key`). Výstup je nezávislé okno: když pult zamrzne, obraz běží dál.
 Náhled v pultu = stejný `Compositor` v malém rozlišení, krmený audio snímky z výstupu.

@@ -23,7 +23,7 @@ vec4 element(vec2 p){
   float seed = (uHard>0.5) ? uFrame : floor(uPhase*3.0);
   seed += uHitCount*17.0;
   int N = int(2.0 + uDensity*10.0 + uDrive*8.0 + uHit*6.0);
-  float w = PX()*mix(0.6, 2.2, uSize);
+  float w = PX()*mix(0.6, 6.0, uSize*uSize); // rozšířený rozsah (VJ app v0.3)
   float m = 0.0;
   for(int i=0;i<26;i++){
     if(i>=N) break;

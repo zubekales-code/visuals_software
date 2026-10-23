@@ -97,6 +97,8 @@ function sendStats() {
     heapMB: m ? m.usedJSHeapSize / 1048576 : null,
     test: test.running ? { running: true, elapsed: test.elapsed, duration: test.total, label: test.name } : testDone,
     audio: audio.status,
+    audioPos: audio.position,
+    audioDur: audio.duration,
     errors: errs,
   };
   vj.sendStats(stats);
@@ -110,7 +112,8 @@ async function finishTest() {
   const layersOn = state.layers.filter(layerLive).map(l => activeClip(l)!.content);
   const r = test.result({
     gpu: comp.gpuName, outW: state.outW, outH: state.outH, layersOn, glow: state.glow.on, preview: state.preview,
-    audio: audio.status, audioLatencyMs: audio.latencyMs(), float16: comp.g.float16, gpuTimer: comp.timer.available,
+    audio: audio.status,
+    audioLatencyMs: audio.latencyMs(), float16: comp.g.float16, gpuTimer: comp.timer.available,
   }, layerGpu(), comp.layerGpuMs(8), displayHz);
   const stamp = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
   const path = await vj.writeReport({ baseName: `test_${stamp}`, json: JSON.stringify(r, null, 2), txt: reportText(r) });
@@ -118,7 +121,7 @@ async function finishTest() {
   sendStats();
   if (smokeMode) {
     const errs = comp.errors.size;
-    vj.smokeDone(errs === 0 && r.frames > 10, `frames=${r.frames} fps=${r.avgFps} gpu=${r.context.gpu} float16=${r.context.float16} shaderErrors=${errs} ${[...comp.errors.values()].join(' | ')} report=${path}`);
+    vj.smokeDone(errs === 0 && r.frames > 10, `audio=${audio.status} dur=${audio.duration.toFixed(1)} pos=${audio.position.toFixed(1)} frames=${r.frames} fps=${r.avgFps} gpu=${r.context.gpu} float16=${r.context.float16} shaderErrors=${errs} ${[...comp.errors.values()].join(' | ')} report=${path}`);
   }
 }
 
@@ -130,6 +133,7 @@ vj.onStartTest(minutes => {
 });
 
 vj.onState(s => { void applyState(s); });
+vj.onSeekAudio(sec => audio.seek(sec));
 vj.onContentChanged(list => { items = list; comp?.setContent(list); });
 
 (async () => {

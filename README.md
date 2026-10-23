@@ -1,4 +1,4 @@
-# VJ software — v0.1 (Etapa 0: test výkonu)
+# VJ software — v0.3 (Etapa 0: test výkonu)
 
 Vlastní VJ aplikace pro Windows: průhledné vrstvy, vizuály reagující na zvuk, výstup na projektor.
 Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 vrstev s videem na 60 fps bez trhání.
@@ -24,11 +24,22 @@ Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 v
 Pak zkus i **Zátěž: všech 8**, rozlišení 1920×1080 i 2560×1440, glow zap/vyp a náhled v pultu zap/vyp. Každý test dá jednu zprávu.
 
 ## Pult
-Vypadá podle schváleného konceptu (`INTERFACE KONCEPT`): nahoře lišta, uprostřed mřížka **vrstvy × 10 sloupců**, dole **náhled výstupu | vlastnosti klipu | zvuk**.
-- **Klip** = vizuál + jeho vlastní hodnoty. Klik na klip ho spustí a ukáže jeho nastavení dole. Pravý klik otevře menu: změnit, duplikovat jako variantu, odebrat. Klik na prázdnou buňku přidá klip.
+Vypadá podle schváleného konceptu (`INTERFACE KONCEPT`): nahoře lišta, vlevo **knihovna**, uprostřed mřížka **vrstvy × 10 sloupců**, dole **náhled výstupu | vlastnosti klipu | zvuk**.
+- **Klip** = vizuál + jeho vlastní hodnoty. **Klik spustí, druhý klik zastaví** (stejně jako klávesa). Nastavení klipu se ukáže dole.
+- **Přetahování:** klip táhni do jiné buňky i jiné vrstvy (na obsazenou buňku se prohodí), **s Ctrl se zkopíruje**. Z knihovny táhni vizuál do buňky.
+- **Pravý klik na klip:** změnit vizuál, duplikovat jako variantu, ukázat soubor, odebrat.
 - **Hlavička vrstvy:** oko zapne/vypne vrstvu, posuvník = průhlednost, Normál/Add/Screen = prolínání, 1/½/¼ = rozlišení vrstvy (menší = levnější).
+- **Velikosti částí:** táhni za proužky mezi knihovnou a mřížkou, nad spodní částí a mezi spodními panely. Dvojklik = výchozí. Knihovnu schováš šipkou ‹.
+- **Výstup** (tlačítko v liště): na který monitor, celá obrazovka nebo okno, rozlišení obrazu. Připojený projektor = výstup na něj skočí sám, odpojený = výstup do okna.
 - **ZÁMEK** (Ctrl+L): myš nic nezmění, klávesy dál spouští klipy.
 - **Test výkonu** je v horní liště.
+
+## Knihovna a sady
+- Knihovna je složka **`VISUALS SOFTWARE\knihovna`** (tvary, videa, zvuk, sady). Aktualizace aplikace ji nepřepíše.
+- **Přidat soubory:** tlačítko **+ Přidat**, nebo je přetáhni z Průzkumníka do knihovny / rovnou do buňky / wav do panelu Zvuk.
+  Video v jiném formátu (.mov, .mkv, .avi…) se samo převede na WebM s průhledností.
+- **Sady (estetiky):** klikni na název vlevo nahoře → uložit pod jménem / načíst / nová prázdná. Ctrl+S uloží. Sada = rozložení klipů a jejich nastavení; vizuály jsou soubory v knihovně, takže estetiku vyměníš bez zásahu do systému.
+- Nový **druh** tvaru (úplně nové chování) napíše Claude podle reference → přetáhneš ho do knihovny.
 
 ## Klávesy
 Každá vrstva má svou řadu kláves. Klávesa spustí klip v daném sloupci, druhý stisk ho zastaví. Klávesa je vidět v rohu buňky.
@@ -49,10 +60,12 @@ Každá vrstva má svou řadu kláves. Klávesa spustí klip v daném sloupci, d
 | Esc | nouzová černá (znovu = zpět) |
 | Mezerník | přehrát / pauza hudby (wav) |
 | Ctrl+L | zámek |
+| Ctrl+S | uložit sadu |
 
 ## Obsah = soubory
-- `content/shaders/*.glsl` — vizuály. Nový vizuál = nový soubor (hlavička nahoře, funkce `element`). Uložená změna se v aplikaci hned projeví. Chybný shader obraz nesmaže, chyba se ukáže v pultu.
-- `content/videos/` — videa. Video na převod přetáhni na `prevod_videa.bat`: vznikne WebM s průhledností.
+- `knihovna\tvary\*.glsl` — vizuály (hlavička nahoře, funkce `element`). Uložená změna se hned projeví; chybný shader obraz nesmaže.
+- `knihovna\videa\` — videa (WebM s průhledností / MP4), `knihovna\zvuk\` — skladby, `knihovna\sady\` — uložené sady.
+- `content\` v aplikaci je jen základní balíček: při startu se do knihovny doplní, co v ní ještě nebylo (tvé úpravy nepřepíše, smazané nevrací).
 - `test_alfa.webm` a `test_prostredi.mp4` jsou jen testovací.
 
 ## Pro vývoj

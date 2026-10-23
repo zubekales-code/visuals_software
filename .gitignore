@@ -4,3 +4,4 @@ zpravy/
 *.log
 content/audio/*
 !content/audio/.gitkeep
+knihovna/

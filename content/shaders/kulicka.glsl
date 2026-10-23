@@ -28,7 +28,7 @@ vec4 element(vec2 p){
   float decay = mix(0.985, 0.88, uHard);
   prev = max(prev*decay - 0.003, 0.0);
   int N = 1 + int(uDensity*3.0);
-  float w = PX()*mix(0.8, 3.0, uSize);
+  float w = PX()*mix(0.8, 10.0, uSize*uSize); // rozšířený rozsah (VJ app v0.3)
   float m = 0.0;
   for(int i=0;i<4;i++){
     if(i>=N) break;
@@ -36,7 +36,7 @@ vec4 element(vec2 p){
     vec2 a = ballPos(uPhase-uDPhase, fi, uPrevHitCount);
     vec2 b = ballPos(uPhase, fi, uHitCount);
     m = max(m, fillD(sdSeg(p,a,b)-w*0.5));
-    m = max(m, fillD(length(p-b)-PX()*mix(3.0,7.0,uSize)));
+    m = max(m, fillD(length(p-b)-PX()*mix(3.0,14.0,uSize*uSize)));
   }
   vec4 c = vec4(uColA*m, m);
   return c + prev*(1.0-c.a);

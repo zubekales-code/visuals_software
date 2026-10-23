@@ -127,6 +127,10 @@ export class AudioEngine {
     return f;
   }
 
+  seek(sec: number) { if (this.el && isFinite(sec)) this.el.currentTime = Math.max(0, Math.min(sec, this.el.duration || 0)); }
+  get position() { return this.el ? this.el.currentTime : 0; }
+  get duration() { return this.el && isFinite(this.el.duration) ? this.el.duration : 0; }
+
   /** Odhad zpoždění zvukového řetězce v ms (pro zprávu z testu). */
   latencyMs() {
     if (!this.ctx) return null;

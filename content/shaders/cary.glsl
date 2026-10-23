@@ -21,7 +21,7 @@
 vec4 element(vec2 p){
   float A = ASP();
   int N = 2 + int(uDensity*10.0);
-  float w = PX()*mix(1.5, 8.0, uSize);
+  float w = PX()*mix(1.5, 24.0, uSize*uSize); // rozšířený rozsah (VJ app v0.3)
   float m = 0.0;
   for(int i=0;i<12;i++){
     if(i>=N) break;

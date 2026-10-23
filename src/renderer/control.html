@@ -9,10 +9,10 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">
+  <button class="brand" id="brand" title="Sady (estetiky): uložit, načíst, nová — Ctrl+S uloží">
     <div class="logo">VJ</div>
-    <div class="brand-txt"><span class="proj">Pracovní sada</span><span class="sub">uloženo automaticky · v0.2</span></div>
-  </div>
+    <div class="brand-txt"><span class="proj" id="sadaName">Pracovní sada</span><span class="sub" id="sadaSub">uloženo automaticky · v0.3</span></div>
+  </button>
 
   <div class="seg tempo">
     <span class="lbl">BPM</span>
@@ -32,7 +32,7 @@
   <div class="spacer"></div>
 
   <button class="btn ghost testbtn" id="testBtn" title="Test výkonu (Etapa 0)">Test výkonu<span class="badge" id="errBadge" hidden>!</span></button>
-  <button class="proj-status" id="projBtn" title="Výstup a projektor"><span class="dot" id="projDot"></span><span id="projTxt">Projektor · —</span></button>
+  <button class="btn outbtn" id="outBtn" title="Kam jde výstup: monitor / projektor, celá obrazovka nebo okno"><span class="dot" id="projDot"></span><span id="outTxt">Výstup · —</span><span class="muted">▾</span></button>
   <button class="btn lock" id="lock" title="Zámek: myš nic nezmění, klávesy fungují (Ctrl+L)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
     ZÁMEK
@@ -40,12 +40,35 @@
   <button class="black" id="black" title="Nouzová černá (Esc)">ČERNÁ · Esc</button>
 </header>
 
-<section class="gridwrap" aria-label="Mřížka klipů">
-  <div class="cliprow head" id="colHead"></div>
-  <div id="rows"></div>
-</section>
+<div class="work" id="work">
+  <aside class="lib" id="lib">
+    <div class="lib-head">
+      <span class="title">Knihovna</span>
+      <div class="spacer"></div>
+      <button class="btn sm" id="libAdd" title="Přidat soubory z počítače (nebo je sem přetáhni)">+ Přidat</button>
+      <button class="btn sm ghost" id="libFolder" title="Otevřít složku knihovny v Průzkumníku">Složka</button>
+      <button class="iconbtn" id="libHide" title="Schovat knihovnu">‹</button>
+    </div>
+    <div class="tabs" id="libTabs">
+      <button data-tab="shader" class="on">Tvary</button><button data-tab="video">Videa</button><button data-tab="audio">Zvuk</button>
+    </div>
+    <input class="search" id="libSearch" type="search" placeholder="Hledat…">
+    <div class="lib-list" id="libList"></div>
+    <div class="lib-foot muted sm" id="libFoot">Přetáhni do buňky v mřížce. Soubory z počítače přetáhni sem.</div>
+    <div class="dropzone" id="libDrop" hidden>Pusť soubory sem → zkopírují se do knihovny</div>
+  </aside>
+  <div class="vsplit" id="splitLib" title="Táhni = šířka knihovny · dvojklik = výchozí"></div>
+  <button class="libshow" id="libShow" title="Ukázat knihovnu" hidden>›</button>
 
-<section class="bottom">
+  <section class="gridwrap" aria-label="Mřížka klipů">
+    <div class="cliprow head" id="colHead"></div>
+    <div id="rows"></div>
+  </section>
+</div>
+
+<div class="hsplit" id="splitBottom" title="Táhni = výška spodní části · dvojklik = výchozí"></div>
+
+<section class="bottom" id="bottom">
   <div class="card preview">
     <div class="card-head">
       <span class="title">Náhled výstupu</span><span class="muted sm">zmenšený</span>
@@ -58,26 +81,34 @@
       <span class="screen-lbl mono" id="screenLbl">VÝSTUP</span>
     </div>
   </div>
+  <div class="vsplit col" data-split="0" title="Táhni = šířka panelů · dvojklik = výchozí"></div>
 
   <div class="card props" id="props"></div>
+  <div class="vsplit col" data-split="1" title="Táhni = šířka panelů · dvojklik = výchozí"></div>
 
-  <div class="card audio">
-    <div class="card-head"><span class="title">Zvuk</span><span class="muted sm" id="audioDev">—</span></div>
-    <div id="bands"></div>
-    <span class="muted sm">tečka = úder v pásmu</span>
-    <div class="divider"></div>
-    <div class="prow3"><span class="plabel">Citlivost</span><input type="range" class="slim" id="sens" min="0.3" max="2" step="0.05"><span class="val mono" id="sensVal"></span></div>
+  <div class="card audio" id="audioCard">
+    <div class="card-head"><span class="title">Zvuk</span><span class="muted sm ell" id="audioDev">—</span></div>
     <div class="srcbtns">
-      <button class="btn" data-src="input">Kabel</button>
-      <button class="btn" data-src="wav">Wav soubor</button>
-      <button class="btn" data-src="demo">Demo</button>
+      <button class="btn" data-src="input" title="Zvuk z kabelu (line-in zvukovky)">Kabel</button>
+      <button class="btn" data-src="wav" title="Skladba z knihovny">Wav soubor</button>
+      <button class="btn" data-src="demo" title="Umělý rytmus 122 BPM na zkoušení">Demo</button>
     </div>
     <div class="srcrow" id="inRow"><select id="device"></select><button class="btn sm" id="loadDevices">Načíst vstupy</button></div>
-    <div class="srcrow" id="wavRow"><button class="btn sm" id="pickWav">Vybrat…</button><span class="muted sm ell" id="wavName">—</span><button class="btn sm" id="playWav" title="Mezerník">▶ / ❚❚</button></div>
+    <div class="wavbox" id="wavBox">
+      <div class="srcrow"><select id="track"></select><button class="btn sm" id="addTrack" title="Přidat skladbu z počítače (nebo ji sem přetáhni)">+ Přidat</button></div>
+      <div class="srcrow"><button class="btn sm playbtn" id="playWav" title="Přehrát / pauza (mezerník)">▶</button>
+        <input type="range" class="slim" id="seek" min="0" max="1" step="0.001" value="0" title="Pozice ve skladbě">
+        <span class="val mono" id="time">0:00 / 0:00</span></div>
+    </div>
+    <div id="bands"></div>
+    <span class="muted sm">tečka = úder v pásmu</span>
+    <div class="prow3"><span class="plabel">Citlivost</span><input type="range" class="slim" id="sens" min="0.3" max="2" step="0.05"><span class="val mono" id="sensVal"></span></div>
+    <div class="dropzone" id="audioDrop" hidden>Pusť skladbu sem → přidá se do knihovny a spustí</div>
   </div>
 </section>
 
 <div class="menu" id="menu" hidden></div>
+<div class="toast" id="toast" hidden></div>
 <script src="control.js"></script>
 </body>
 </html>

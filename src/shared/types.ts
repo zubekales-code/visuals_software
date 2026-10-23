@@ -52,6 +52,7 @@ export interface AppState {
   selected: { layer: number; col: number } | null; // klip ve vlastnostech
   bpm: number;
   locked: boolean;       // zámek: myš nic nezmění, klávesy fungují
+  sada: string;          // název načtené / uložené sady ("" = pracovní)
   glow: { on: boolean; amount: number };
   black: boolean;        // nouzová černá
   outW: number;          // rozlišení výstupu (nezávislé na notebooku)
@@ -78,13 +79,21 @@ export interface ShaderHeader {
 }
 
 export interface ContentItem {
-  id: string;            // "shader:padla" | "video:soubor.webm"
-  kind: 'shader' | 'video';
+  id: string;            // "shader:padla" | "video:soubor.webm" | "audio:pisen.wav"
+  kind: 'shader' | 'video' | 'audio';
   name: string;
   file: string;          // název souboru
-  url?: string;          // file:// URL (video)
+  path?: string;         // cesta na disku (knihovna)
+  url?: string;          // file:// URL (video, zvuk)
   source?: string;       // text shaderu
 }
+
+export interface ImportResult { ids: string[]; errors: string[] }
+export interface SadaInfo { name: string; savedAt: string }
+/** Uložená sada = rozložení mřížky + klipy s nastavením (estetika). Systém pod tím je stejný. */
+export interface SadaFile { app: 'vj'; version: 1; name: string; savedAt: string; layers: LayerState[]; glow: AppState['glow']; bpm: number }
+export interface OutputPlacement { displayId: number; fullscreen: boolean }
+export interface DisplaysInfo { displays: DisplayInfo[]; placement: OutputPlacement }
 
 export interface LayerStat { ms: number }
 export interface OutputStats {
@@ -98,7 +107,9 @@ export interface OutputStats {
   gpu: string;           // název grafiky (ověřit RTX, ne integrovanou)
   heapMB: number | null;
   test: TestProgress | null;
-  audio: string;         // stav zvuku (demo / wav / vstup / chyba)
+  audio: string;
+  audioPos: number;      // pozice skladby v s (wav)
+  audioDur: number;      // délka skladby v s (0 = není)         // stav zvuku (demo / wav / vstup / chyba)
   errors: string[];
 }
 export interface TestProgress { running: boolean; elapsed: number; duration: number; label: string }
@@ -121,9 +132,22 @@ export interface VjApi {
   startTest(minutes: number): void;
   onStartTest(cb: (minutes: number) => void): void;
   writeReport(r: ReportPayload): Promise<string>;
-  pickWav(): Promise<string | null>;
+  /** Okno pro výběr souborů → zkopíruje je do knihovny. */
+  pickImport(kind: 'all' | 'audio'): Promise<ImportResult | null>;
+  importFiles(paths: string[]): Promise<ImportResult>;
+  onLibraryProgress(cb: (text: string) => void): void;
+  openLibrary(sub: string): void;
+  showInFolder(path: string): void;
+  /** Cesta k souboru přetaženému z Průzkumníka. */
+  pathForFile(f: File): string;
+  listSady(): Promise<SadaInfo[]>;
+  saveSada(name: string, json: string): Promise<void>;
+  loadSada(name: string): Promise<string | null>;
+  seekAudio(sec: number): void;
+  onSeekAudio(cb: (sec: number) => void): void;
+  onDisplays(cb: (d: DisplaysInfo) => void): void;
   fileUrl(path: string): Promise<string>;
-  displays(): Promise<DisplayInfo[]>;
+  displays(): Promise<DisplaysInfo>;
   placeOutput(displayId: number, fullscreen: boolean): void;
   sendKey(key: string): void;
   onKey(cb: (key: string) => void): void;
@@ -160,6 +184,7 @@ export function defaultState(): AppState {
     selected: { layer: 3, col: 0 },
     bpm: 122,
     locked: false,
+    sada: '',
     glow: { on: true, amount: 0.45 },
     black: false,
     outW: 1920,

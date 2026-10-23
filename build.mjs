@@ -7,8 +7,8 @@ mkdirSync('dist', { recursive: true });
 
 const common = { bundle: true, sourcemap: 'inline', logLevel: 'warning', target: 'es2022' };
 
-await build({ ...common, entryPoints: ['src/main/main.ts'], outfile: 'dist/main.js', platform: 'node', format: 'cjs', external: ['electron'] });
-await build({ ...common, entryPoints: ['src/main/preload.ts'], outfile: 'dist/preload.js', platform: 'node', format: 'cjs', external: ['electron'] });
+await build({ ...common, entryPoints: ['src/main/main.ts'], outfile: 'dist/main.js', platform: 'node', format: 'cjs', external: ['electron', 'ffmpeg-static'] });
+await build({ ...common, entryPoints: ['src/main/preload.ts'], outfile: 'dist/preload.js', platform: 'node', format: 'cjs', external: ['electron', 'ffmpeg-static'] });
 await build({ ...common, entryPoints: ['src/renderer/control.ts'], outfile: 'dist/control.js', platform: 'browser', format: 'iife' });
 await build({ ...common, entryPoints: ['src/renderer/output.ts'], outfile: 'dist/output.js', platform: 'browser', format: 'iife' });
 for (const f of ['control.html', 'output.html', 'style.css']) cpSync(`src/renderer/${f}`, `dist/${f}`);

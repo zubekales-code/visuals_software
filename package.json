@@ -1,6 +1,6 @@
 {
   "name": "visuals-software",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Vlastni VJ software (Electron + WebGL2). Etapa 0: test vykonu.",
   "private": true,
   "main": "dist/main.js",
