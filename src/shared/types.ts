@@ -2,15 +2,41 @@
 // Pult drží „pravdu“ o stavu projektu; výstup jen kreslí podle stavu, který dostane.
 
 export const LAYER_COUNT = 8;
+export const CLIP_COLS = 10;
 
 export type Drive = 'kick' | 'bass' | 'high' | 'loud' | 'none';
 export type LayerScale = 1 | 0.5 | 0.25;
+export type Blend = 'normal' | 'add' | 'screen';
+
+/** Hodnoty klipu, které přepisují výchozí hodnoty z hlavičky shaderu (co není vyplněné, bere se z hlavičky). */
+export interface ClipParams {
+  drive?: Drive; hard?: number; speed?: number; density?: number; size?: number; colA?: string; colB?: string;
+  custom?: Record<string, number>;
+}
+
+/** Klip = vizuál (soubor) + vlastní hodnoty. Leží v buňce mřížky vrstva × sloupec. */
+export interface ClipState {
+  content: string;       // id obsahu: "shader:padla" | "video:test_alfa.webm"
+  params: ClipParams;
+}
 
 export interface LayerState {
-  on: boolean;
+  on: boolean;           // oko: vrstva zapnutá
   opacity: number;       // 0–1
   scale: LayerScale;     // rozlišení vrstvy vůči výstupu
-  content: string;       // id obsahu: "shader:padla" | "video:test_alfa.webm" | ""
+  blend: Blend;          // prolínání s vrstvami pod ní
+  clips: (ClipState | null)[]; // CLIP_COLS buněk
+  active: number;        // hrající sloupec, -1 = nic
+}
+
+/** Hrající klip vrstvy (nebo null). */
+export function activeClip(l: LayerState): ClipState | null {
+  return l.active >= 0 ? l.clips[l.active] ?? null : null;
+}
+
+/** Vrstva opravdu něco kreslí: je zapnutá a hraje klip. */
+export function layerLive(l: LayerState): boolean {
+  return l.on && !!activeClip(l);
 }
 
 export interface AudioSettings {
@@ -22,7 +48,10 @@ export interface AudioSettings {
 }
 
 export interface AppState {
-  layers: LayerState[];
+  layers: LayerState[];  // index 0 = Vrstva 1 (dole)
+  selected: { layer: number; col: number } | null; // klip ve vlastnostech
+  bpm: number;
+  locked: boolean;       // zámek: myš nic nezmění, klávesy fungují
   glow: { on: boolean; amount: number };
   black: boolean;        // nouzová černá
   outW: number;          // rozlišení výstupu (nezávislé na notebooku)
@@ -108,10 +137,29 @@ declare global {
   interface Window { vj: VjApi }
 }
 
+const clip = (content: string, params: ClipParams = {}): ClipState => ({ content, params });
+
 export function defaultState(): AppState {
-  const content = ['shader:gradient', 'shader:bloky', 'shader:cary', 'shader:padla', 'shader:kulicka', 'shader:skrabance', 'shader:tecky', 'video:test_alfa.webm'];
+  // Testovací sada: prostředí dole, video s alfou, nad tím tvary ze sandboxu (některé i ve variantách).
+  const grid: (ClipState | null)[][] = [
+    [clip('video:test_prostredi.mp4')],
+    [clip('video:test_alfa.webm')],
+    [clip('shader:gradient'), clip('shader:bloky')],
+    [clip('shader:cary'), clip('shader:padla')],
+    [clip('shader:kulicka'), clip('shader:skrabance')],
+    [clip('shader:tecky'), clip('shader:dlazdice')],
+    [clip('shader:padla', { hard: 1 }), clip('shader:cary', { density: 0.6, colA: '#ffffff' })],
+    [clip('shader:skrabance', { density: 0.7 }), clip('shader:tecky', { density: 0.8, colA: '#f4f6f2', colB: '#1b1f1a' })],
+  ];
   return {
-    layers: content.map((c, i) => ({ on: i < 7, opacity: 1, scale: 1 as LayerScale, content: c })),
+    layers: grid.map((row, i) => ({
+      on: true, opacity: 1, scale: 1 as LayerScale, blend: 'normal' as Blend,
+      clips: Array.from({ length: CLIP_COLS }, (_, c) => row[c] ?? null),
+      active: i === 0 ? -1 : 0, // výchozí = sestava brány: 7 vrstev vč. videa
+    })),
+    selected: { layer: 3, col: 0 },
+    bpm: 122,
+    locked: false,
     glow: { on: true, amount: 0.45 },
     black: false,
     outW: 1920,

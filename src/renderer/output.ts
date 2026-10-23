@@ -1,8 +1,10 @@
 // Výstupní okno (projektor): zvuk, kompozitor, měření. Stav dostává z pultu.
 import type { AppState, OutputStats, ContentItem, TestProgress } from '../shared/types';
+import { activeClip, layerLive } from '../shared/types';
 import { Compositor } from './engine/compositor';
 import { AudioEngine } from './audio';
 import { PerfTest, reportText, estimateRefresh } from './perf-test';
+import { keyName } from './keys';
 
 const vj = window.vj;
 const canvas = document.getElementById('out') as HTMLCanvasElement;
@@ -40,7 +42,7 @@ async function applyState(s: AppState) {
 }
 
 // Klávesy stisknuté ve výstupním okně patří pultu.
-window.addEventListener('keydown', e => { if (!e.repeat) vj.sendKey(e.code); e.preventDefault(); });
+window.addEventListener('keydown', e => { if (!e.repeat) vj.sendKey(keyName(e)); e.preventDefault(); });
 
 // ---------- smyčka ----------
 const DT_RING = 120;
@@ -70,7 +72,7 @@ function loop() {
 function layerGpu(): Record<string, number | null> {
   const out: Record<string, number | null> = {};
   if (!comp || !state) return out;
-  state.layers.forEach((l, i) => { if (l.on && l.content) out[`${i + 1} ${l.content}`] = comp!.layerGpuMs(i); });
+  state.layers.forEach((l, i) => { const c = activeClip(l); if (l.on && c) out[`${i + 1} ${c.content}`] = comp!.layerGpuMs(i); });
   return out;
 }
 
@@ -105,7 +107,7 @@ let testDone: TestProgress | null = null;
 
 async function finishTest() {
   if (!comp || !state) return;
-  const layersOn = state.layers.filter(l => l.on && l.content).map(l => l.content);
+  const layersOn = state.layers.filter(layerLive).map(l => activeClip(l)!.content);
   const r = test.result({
     gpu: comp.gpuName, outW: state.outW, outH: state.outH, layersOn, glow: state.glow.on, preview: state.preview,
     audio: audio.status, audioLatencyMs: audio.latencyMs(), float16: comp.g.float16, gpuTimer: comp.timer.available,
@@ -123,7 +125,7 @@ async function finishTest() {
 
 vj.onStartTest(minutes => {
   if (!state) return;
-  const n = state.layers.filter(l => l.on && l.content).length;
+  const n = state.layers.filter(layerLive).length;
   test.start(minutes, `${minutes} min · ${n} vrstev · ${state.outW}×${state.outH}`, performance.now());
 });
 
@@ -136,5 +138,5 @@ vj.onContentChanged(list => { items = list; comp?.setContent(list); });
   vj.outputReady();
   requestAnimationFrame(loop);
   smokeMode = await vj.isSmoke();
-  if (smokeMode) setTimeout(() => test.start(0.1, 'smoke', performance.now()), 3000);
+  if (smokeMode) setTimeout(() => test.start(0.25, 'smoke', performance.now()), 8000);
 })();

@@ -89,3 +89,27 @@ test('test výkonu: pomalé GPU neprojde, i když běží stabilně (frekvence d
   const r2 = t2.result({ gpu: 'NVIDIA GeForce RTX 3060 Laptop GPU', outW: 1920, outH: 1080, layersOn: ['a', 'b', 'c', 'd', 'e', 'f', 'video:x'], glow: true, preview: true, audio: 'demo', audioLatencyMs: 10, float16: true, gpuTimer: true }, {}, null, 60);
   assert.equal(r2.passed, true, r2.verdict.join(' '));
 });
+
+import { clipForKey, keyLabel, LAYER_KEYS } from '../src/renderer/keys';
+import { defaultState, activeClip, layerLive, CLIP_COLS, LAYER_COUNT } from '../src/shared/types';
+
+test('klávesy: každá vrstva má 10 jedinečných kláves', () => {
+  const all = LAYER_KEYS.flat();
+  assert.equal(LAYER_KEYS.length, LAYER_COUNT);
+  assert.ok(LAYER_KEYS.every(r => r.length === CLIP_COLS));
+  assert.equal(new Set(all).size, all.length);
+  assert.deepEqual(clipForKey('KeyQ'), { layer: 6, col: 0 });
+  assert.deepEqual(clipForKey('Shift+Digit0'), { layer: 3, col: 9 });
+  assert.equal(clipForKey('Escape'), null);
+  assert.equal(keyLabel(7, 9), '0');
+  assert.equal(keyLabel(2, 1), '⇧W');
+  assert.equal(keyLabel(5, 9), ';');
+});
+
+test('výchozí stav = sestava brány: 7 hrajících vrstev včetně videa', () => {
+  const s = defaultState();
+  const live = s.layers.filter(layerLive);
+  assert.equal(live.length, 7);
+  assert.ok(live.some(l => activeClip(l)!.content.startsWith('video:')));
+  assert.ok(s.layers.every(l => l.clips.length === CLIP_COLS));
+});

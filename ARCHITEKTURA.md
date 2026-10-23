@@ -9,6 +9,9 @@ main (Node)  ── src/main/main.ts      okna, obsah z disku, IPC, zápis zprá
   └─ výstup  ── src/renderer/output.ts   zvuk + kompozitor na projektor, měření, test výkonu
 preload      ── src/main/preload.ts   jediné API oken (window.vj, typ VjApi v src/shared/types.ts)
 ```
+Stav (`AppState`, src/shared/types.ts): 8 vrstev × 10 klipů. Klip = `{ content, params }`, params přepisují výchozí hodnoty z hlavičky shaderu.
+Vrstva: `on`, `opacity`, `scale`, `blend` (normal/add/screen), `active` = hrající sloupec. Kompozitor kreslí `activeClip(vrstva)`.
+Klávesy klipů: `src/renderer/keys.ts`. Náhledy klipů (1 snímek): `src/renderer/thumbs.ts`. Vzhled pultu = `INTERFACE KONCEPT/interface_koncept.html`.
 Tok: pult → `state` → main → výstup. Výstup → `audio-frame` (každý snímek) + `stats` (2×/s) → pult.
 Klávesy stisknuté ve výstupu jdou do pultu (`key`). Výstup je nezávislé okno: když pult zamrzne, obraz běží dál.
 Náhled v pultu = stejný `Compositor` v malém rozlišení, krmený audio snímky z výstupu.

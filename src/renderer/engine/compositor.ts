@@ -1,8 +1,8 @@
 // Kompozitor: každá vrstva se kreslí do vlastního bufferu (RGBA16F, premultiplied alfa),
 // pak se vrstvy skládají přes sebe, přidá se glow a výsledek jde na obrazovku.
 // Pravidla výkonu: vypnutá vrstva se nekreslí, buffery se alokují jen při změně, ne každý snímek.
-import type { AppState, AudioFrame, ContentItem, ShaderHeader } from '../../shared/types';
-import { LAYER_COUNT } from '../../shared/types';
+import type { AppState, AudioFrame, ClipParams, ContentItem, ShaderHeader } from '../../shared/types';
+import { LAYER_COUNT, activeClip } from '../../shared/types';
 import { parseShaderHeader, hexToRgb } from '../../shared/shader-header';
 import { Gl, GlError, type Prog, type Target, type Uniform } from './gl';
 import { buildElementSource, FS_COPY, FS_VIDEO, FS_DOWN, FS_BLUR, FS_FINAL } from './glsl';
@@ -53,6 +53,10 @@ class VideoSource {
 
 interface LayerSlot {
   content: string;
+  activeCol: number;
+  // hodnoty klipu sloučené s hlavičkou shaderu (přepočítají se jen při změně)
+  viewParams: ClipParams | null; viewSh: ShaderEntry | null;
+  d: ShaderHeader['defaults']; colA: number[]; colB: number[];
   scale: number;
   a: Target | null;
   b: Target | null;       // druhý buffer pro stopy (feedback)
@@ -110,7 +114,8 @@ export class Compositor {
   private newSlot(): LayerSlot {
     const res = new Float32Array(2), xf = new Float32Array([0, 0, 1, 0]);
     return {
-      content: '', scale: 1, a: null, b: null, rt: new LayerRuntime(), video: null, needClear: true,
+      content: '', activeCol: -1, viewParams: null, viewSh: null, d: { ...VIDEO_DEFAULTS }, colA: [1, 1, 1], colB: [1, 1, 1],
+      scale: 1, a: null, b: null, rt: new LayerRuntime(), video: null, needClear: true,
       uni: {}, xf, fit: new Float32Array([1, 1]), res, copyUni: { uRes: new Float32Array(2), uMul: 1 },
     };
   }
@@ -171,6 +176,7 @@ export class Compositor {
     L.video?.dispose(); L.video = null;
     L.rt = new LayerRuntime();
     L.uni = {};
+    L.viewParams = null; L.viewSh = null; L.activeCol = -1;
     L.needClear = true;
     const it = this.items.get(content);
     if (it?.kind === 'video' && it.url && this.withVideo) L.video = new VideoSource(this.g.gl, it.url);
@@ -197,27 +203,29 @@ export class Compositor {
     for (let i = 0; i < LAYER_COUNT; i++) {
       const L = this.layers[i], ls = s.layers[i];
       if (!ls) continue;
-      this.assign(L, ls.content);
+      const clip = activeClip(ls);
+      const on = ls.on && !!clip;
+      // Když klip dohraje (vypnutí), necháme ho doznít se stejným obsahem.
+      if (clip) this.assign(L, clip.content);
       if (L.scale !== ls.scale) { L.scale = ls.scale; }
       const sh = this.shaders.get(L.content);
-      const isVideo = !!L.video;
-      const valid = !!sh || isVideo;
-      const defaults = sh?.header.defaults ?? VIDEO_DEFAULTS;
-      L.rt.update(defaults, audio, ls.on && valid, dt);
-      L.video?.setPlaying(ls.on || L.rt.fade > 0);
-      if (!valid || (L.rt.fade <= 0 && !ls.on)) { L.needClear = true; T.forget(i); continue; }
+      if (clip && ls.active !== L.activeCol) { L.activeCol = ls.active; if (L.video) L.video.el.currentTime = 0; }
+      if (clip) this.updateView(L, clip.params, sh ?? null);
+      const valid = !!sh || !!L.video;
+      L.rt.update(L.d, audio, on && valid, dt);
+      L.video?.setPlaying(on || L.rt.fade > 0);
+      if (!valid || (L.rt.fade <= 0 && !on)) { L.needClear = true; T.forget(i); continue; }
 
       T.begin(i);
       this.ensureTargets(L, !!sh?.header.feedback);
       if (sh) {
-        const r = L.rt, d = sh.header.defaults, u = L.uni;
+        const r = L.rt, d = L.d, u = L.uni;
         u.uRes = L.res; u.uTime = now; u.uFrame = this.frame; u.uHard = d.hard; u.uSpeed = d.speed;
         u.uDensity = d.density; u.uSize = d.size; u.uDrive = r.drive; u.uHit = r.hit; u.uSinceHit = r.sinceHit;
         u.uHitCount = r.hitCount; u.uPrevHitCount = r.prevHitCount; u.uLoud = audio.loud.v;
         u.uPhase = r.phase; u.uDPhase = r.dphase; u.uRot3D = 0; u.uRot3DAng = r.ang; u.uMirror = 0; u.uFade = r.fade;
-        u.uColA = sh.colA; u.uColB = sh.colB; u.uXf = L.xf;
+        u.uColA = L.colA; u.uColB = L.colB; u.uXf = L.xf;
         if (!u.uHitAge) u.uHitAge = { arr: r.hitAges };
-        for (const p of sh.header.params ?? []) if (u[p.name] === undefined) u[p.name] = p.default;
         if (sh.header.feedback && L.b) {
           if (L.needClear) { g.clear(L.a); g.clear(L.b); }
           g.draw(sh.prog, L.b, u, { uPrev: L.a!.tex });
@@ -241,12 +249,16 @@ export class Compositor {
     T.begin(LAYER_COUNT);
     g.clear(this.accum);
     if (anyVisible) {
-      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.enable(gl.BLEND);
       for (let i = 0; i < LAYER_COUNT; i++) {
         const L = this.layers[i], ls = s.layers[i];
         if (!L.a || L.needClear || !ls) continue;
         const mul = L.rt.fade * ls.opacity;
         if (mul <= 0) continue;
+        // Prolínání (vše v premultiplied alfě): Normál = přes, Add = sečíst světlo, Screen = zesvětlit.
+        if (ls.blend === 'add') gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        else if (ls.blend === 'screen') gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         L.copyUni.uRes = this.resVec; L.copyUni.uMul = mul;
         g.draw(this.copy, this.accum, L.copyUni, { uTex: L.a.tex });
       }
@@ -267,6 +279,19 @@ export class Compositor {
     g.draw(this.final, null, f, { uEl: this.accum.tex, uGlow: this.g4a!.tex }, this.w, this.h);
     T.end();
     this.frame++;
+  }
+
+  /** Sloučí hodnoty klipu s hlavičkou shaderu; počítá se jen když se klip nebo shader změní. */
+  private updateView(L: LayerSlot, p: ClipParams, sh: ShaderEntry | null) {
+    if (L.viewParams === p && L.viewSh === sh) return;
+    L.viewParams = p; L.viewSh = sh;
+    const base = sh?.header.defaults ?? VIDEO_DEFAULTS;
+    L.d = {
+      drive: p.drive ?? base.drive, hard: p.hard ?? base.hard, speed: p.speed ?? base.speed,
+      density: p.density ?? base.density, size: p.size ?? base.size, colA: p.colA ?? base.colA, colB: p.colB ?? base.colB,
+    };
+    L.colA = hexToRgb(L.d.colA); L.colB = hexToRgb(L.d.colB);
+    for (const q of sh?.header.params ?? []) L.uni[q.name] = p.custom?.[q.name] ?? q.default;
   }
 
   layerGpuMs(i: number) { return this.timer.value(i); }

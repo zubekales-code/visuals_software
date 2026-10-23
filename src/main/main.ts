@@ -1,6 +1,6 @@
 // Hlavní proces: otevře pult a výstupní okno, načítá obsah ze složky content/,
 // přeposílá zprávy mezi okny a ukládá zprávy z testů do složky zpravy/.
-import { app, BrowserWindow, ipcMain, dialog, screen, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, screen, session, Menu } from 'electron';
 import { readdirSync, readFileSync, mkdirSync, writeFileSync, watch, existsSync } from 'node:fs';
 import { join, extname, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -76,11 +76,13 @@ function createWindows() {
     sandbox: true,
     backgroundThrottling: false, // výstup nesmí zpomalit, když okno není v popředí
   };
-  control = new BrowserWindow({ width: 1500, height: 940, title: 'VJ pult', backgroundColor: '#111311', webPreferences });
+  control = new BrowserWindow({ width: SMOKE ? 1707 : 1500, height: SMOKE ? 1067 : 940, minWidth: 1280, minHeight: 760, title: 'VJ pult', backgroundColor: '#111311', webPreferences });
   output = new BrowserWindow({ width: 1280, height: 720, title: 'VJ výstup', backgroundColor: '#000000', webPreferences });
+  if (!SMOKE) control.maximize(); // pult vždy přes celou obrazovku notebooku
   control.setMenuBarVisibility(false);
   output.setMenuBarVisibility(false);
   control.loadFile(join(__dirname, 'control.html'));
+  if (SMOKE) for (const [w, n] of [[control, 'pult'], [output, 'výstup']] as const) w.webContents.on('console-message', (e: any) => { if (e.level === 'error' || e.level === 'warning') console.log(`[${n}] ${e.message}`); });
   output.loadFile(join(__dirname, 'output.html'));
 
   // Výstup na externí displej, pokud je připojený (projektor).
@@ -96,6 +98,8 @@ function createWindows() {
 }
 
 app.whenReady().then(() => {
+  // Bez menu: žádné náhodné Ctrl+R (znovunačtení) ani F-kláves obsazených menu během hraní.
+  Menu.setApplicationMenu(null);
   // Mikrofon / line-in povolit bez dotazu (jde jen o naše vlastní okna).
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media' || perm === 'fullscreen'));
 
