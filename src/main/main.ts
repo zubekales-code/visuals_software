@@ -1,7 +1,7 @@
 // Hlavní proces: otevře pult a výstupní okno, spravuje knihovnu (VISUALS SOFTWARE\knihovna),
 // přeposílá zprávy mezi okny, hlídá monitory a ukládá zprávy z testů do složky zpravy/.
-import { app, BrowserWindow, ipcMain, dialog, screen, session, Menu, shell } from 'electron';
-import { mkdirSync, writeFileSync, watch, existsSync, copyFileSync } from 'node:fs';
+import { app, BrowserWindow, ipcMain, dialog, screen, session, Menu, shell, desktopCapturer } from 'electron';
+import { mkdirSync, writeFileSync, watch, existsSync, copyFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { AppState, DisplayInfo, DisplaysInfo, OutputPlacement, ReportPayload } from '../shared/types';
@@ -110,7 +110,17 @@ app.whenReady().then(() => {
   // Bez menu: žádné náhodné Ctrl+R (znovunačtení) ani F-kláves obsazených menu během hraní.
   Menu.setApplicationMenu(null);
   // Mikrofon / line-in povolit bez dotazu (jde jen o naše vlastní okna).
-  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media' || perm === 'fullscreen'));
+  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media' || perm === 'fullscreen' || perm === 'display-capture'));
+  // Zvuk tohoto PC: Windows pošle to, co právě hraje zvuková karta (loopback). Obraz obrazovky výstup hned zahodí.
+  session.defaultSession.setDisplayMediaRequestHandler((_req, cb) => {
+    desktopCapturer.getSources({ types: ['screen'] })
+      .then(src => {
+        if (!src[0]) return cb(null);
+        if (process.platform === 'win32') cb({ video: src[0], audio: 'loopback' });
+        else cb({ video: src[0] }); // jinde než na Windows loopback není — výstup ohlásí, že zvuk nepřišel
+      })
+      .catch(() => cb(null));
+  }, { useSystemPicker: false });
 
   ensureLibrary();
   syncStav();
@@ -136,7 +146,7 @@ app.whenReady().then(() => {
   ipcMain.handle('library:pick', async (_e, kind: 'all' | 'audio') => {
     const filters = kind === 'audio'
       ? [{ name: 'Zvuk', extensions: ['wav', 'mp3', 'flac', 'ogg', 'aif', 'aiff', 'm4a'] }]
-      : [{ name: 'Vizuály, videa a zvuk', extensions: ['glsl', 'frag', 'webm', 'mp4', 'mov', 'mkv', 'avi', 'm4v', 'gif', 'wav', 'mp3', 'flac', 'ogg', 'aif', 'aiff', 'm4a'] }];
+      : [{ name: 'Vizuály, 3D scény, videa a zvuk', extensions: ['glsl', 'frag', 'js', 'webm', 'mp4', 'mov', 'mkv', 'avi', 'm4v', 'gif', 'wav', 'mp3', 'flac', 'ogg', 'aif', 'aiff', 'm4a'] }];
     const res = await dialog.showOpenDialog(control!, { title: 'Přidat do knihovny', properties: ['openFile', 'multiSelections'], filters });
     if (res.canceled || !res.filePaths.length) return null;
     return afterImport(await importFiles(res.filePaths, progress));
@@ -151,6 +161,12 @@ app.whenReady().then(() => {
   ipcMain.handle('displays', () => displaysInfo());
   ipcMain.on('output:place', (_e, id: number, fs: boolean) => placeOutput(id, fs));
   ipcMain.handle('smoke', () => SMOKE);
+  // Zachycení zvuku PC musí vypadat jako akce uživatele (jinak ho Chromium odmítne) → spustí se s userGesture.
+  ipcMain.handle('audio:system', async () => {
+    if (!output || output.isDestroyed()) return 'výstupní okno neběží';
+    try { const r = await output.webContents.executeJavaScript('window.__vjCaptureSystem()', true); return typeof r === 'string' ? r : ''; }
+    catch (e) { return (e as Error).message || String(e); }
+  });
   if (SMOKE) ipcMain.on('stats', (_e, s) => console.log(`stats fps=${s.fps.toFixed(1)} errors=${s.errors.length} ${s.errors.join(' | ')}`));
   ipcMain.on('smoke:done', async (_e, ok: boolean, info: string) => {
     console.log((ok ? 'SMOKE OK ' : 'SMOKE FAIL ') + info);
@@ -165,7 +181,7 @@ app.whenReady().then(() => {
 
   // Živé načítání: uložený shader se hned znovu přeloží (chybný nesmaže obraz).
   let t: NodeJS.Timeout | null = null;
-  for (const p of [DIRS.tvary, DIRS.videa, DIRS.zvuk]) {
+  for (const p of [DIRS.tvary, DIRS.sceny, DIRS.videa, DIRS.zvuk]) {
     if (existsSync(p)) watch(p, () => { if (t) clearTimeout(t); t = setTimeout(() => broadcast('content:changed', listLibrary()), 300); });
   }
   if (SMOKE) setTimeout(() => { console.log('SMOKE FAIL timeout'); app.exit(1); }, 150000);
@@ -193,9 +209,29 @@ app.whenReady().then(() => {
       sp.dispatchEvent(new PointerEvent('pointermove', { clientX: r.x + 5, clientY: r.y - 100, pointerId: 1, bubbles: true }));
       sp.dispatchEvent(new PointerEvent('pointerup', { clientX: r.x + 5, clientY: r.y - 100, pointerId: 1, bubbles: true }));
       out.push('bottom ' + Math.round(h0) + '>' + Math.round(document.getElementById('bottom').getBoundingClientRect().height));
+      // v0.4: klik na název = jen vlastnosti (klip hraje dál)
+      const nm = (row, col) => document.querySelectorAll('#rows .cliprow')[row].querySelectorAll('.cname')[col];
+      const act0 = st().layers[7].active; nm(0, 0).click();
+      out.push('nameClick sel=' + st().selected.layer + '/' + st().selected.col + ' active ' + act0 + '>' + st().layers[7].active);
+      // přejmenování vrstvy, sloupce a klipu (dvojklik → napsat → Enter)
+      const typeIn = (el, txt) => { el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); const i = document.querySelector('input.inedit'); if (!i) return 'žádné pole'; i.value = txt; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 'ok'; };
+      typeIn(document.querySelectorAll('#rows .lhead .name')[0], 'Horní tvary');
+      typeIn(document.querySelectorAll('#colHead .colbtn')[2], 'Intro 3D');
+      typeIn(nm(1, 0), 'Čáry hrubé');
+      out.push('rename layer=' + st().layers[7].name + ' col=' + st().colNames[2] + ' clip=' + (st().layers[6].clips[0] && st().layers[6].clips[0].name));
+      // hlavička sloupce: hraje jen sloupec 3 (3D scény)
+      document.querySelectorAll('#colHead .colbtn')[2].click();
+      out.push('column3 active=' + st().layers.map(l => l.active).join(',') + ' head=' + document.querySelectorAll('#colHead .colbtn')[2].className);
+      // GLOW a STROBO na 3D vrstvách (výstup je pak vykreslí v testu výkonu)
+      window.__vjSet(s => { s.layers[2].clips[2].params = { glow: 0.8 }; s.layers[3].clips[2].params = { strobe: 1 }; s.layers[4].clips[2].params = { strobe: 2, strobeMode: 'hit', glow: 0.5 }; s.selected = { layer: 4, col: 2 }; s.preview = true; });
+      out.push('props=' + Array.from(document.querySelectorAll('#props .plabel')).map(e => e.textContent).filter(Boolean).join('/'));
       return out.join(' | ');
     })()`;
     try { console.log('UI ' + await control!.webContents.executeJavaScript(js)); } catch (e) { console.log('UI FAIL ' + (e as Error).message); }
+    // Jen pro vývoj: vlastní krok testu (např. jedna scéna ve velkém rozlišení na kontrolní snímek).
+    if (process.env.VJ_SMOKE_JS) {
+      try { console.log('JS ' + await control!.webContents.executeJavaScript(readFileSync(process.env.VJ_SMOKE_JS, 'utf8'))); } catch (e) { console.log('JS FAIL ' + (e as Error).message); }
+    }
   }, 7000);
   // Automatický test importu (soubory připraví testovací skript): kopie zvuku + převod videa ffmpegem.
   if (SMOKE && process.env.VJ_SMOKE_IMPORT) setTimeout(async () => {

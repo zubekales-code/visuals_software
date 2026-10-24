@@ -12,6 +12,7 @@ export class LayerRuntime {
   hitCount = 0;
   prevHitCount = 0;
   sinceHit = 9;
+  framesSinceHit = 9999;   // snímky od posledního úderu (STROBO „Na úder“, 3D scény)
   readonly hitAges = new Float32Array(8).fill(99);
   drive = 0;
   hit = 0;
@@ -26,8 +27,9 @@ export class LayerRuntime {
     const fadeTime = lerp(0.35, 0.04, h);
     if (on) this.fade = Math.min(1, this.fade + dt / fadeTime);
     else this.fade = Math.max(0, this.fade - dt / fadeTime);
+    this.framesSinceHit++;
     if (b.hit && on) {
-      this.hitCount++; this.sinceHit = 0; this.hit = 1;
+      this.hitCount++; this.sinceHit = 0; this.hit = 1; this.framesSinceHit = 0;
       for (let i = 7; i > 0; i--) this.hitAges[i] = this.hitAges[i - 1];
       this.hitAges[0] = 0;
       this.ang += h * 0.6;

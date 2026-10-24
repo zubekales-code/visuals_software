@@ -13,6 +13,22 @@ let comp: Compositor | null = null;
 let state: AppState | null = null;
 let items: ContentItem[] = [];
 const audio = new AudioEngine();
+// Zvuk tohoto PC: getDisplayMedia smí běžet jen „na pokyn uživatele“, proto ho spouští hlavní proces
+// (executeJavaScript s userGesture) a stream si tu vyzvedneme.
+let systemStream: MediaStream | null = null;
+(window as any).__vjCaptureSystem = async (): Promise<string> => {
+  try {
+    systemStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: { frameRate: 1, width: 64, height: 36 } });
+    return '';
+  } catch (e) { return `${(e as Error).name || 'chyba'}: ${(e as Error).message || e}`; }
+};
+audio.captureSystem = async () => {
+  const err = await vj.captureSystemAudio();
+  if (err) throw new Error(err);
+  const s = systemStream; systemStream = null;
+  if (!s) throw new Error('Windows zvuk nepředal');
+  return s;
+};
 const test = new PerfTest();
 let glErrors: string[] = [];
 let contextLost = false;
@@ -83,9 +99,9 @@ function sendStats() {
   if (comp) {
     for (let i = 0; i <= 8; i++) { const v = comp.layerGpuMs(i); lg.push(v); if (v !== null) gpuMs = (gpuMs ?? 0) + v; }
   }
-  const errs = [...glErrors, ...(comp ? [...comp.errors.entries()].map(([k, v]) => `${k}: ${v}`) : [])];
+  const errs = [...glErrors, ...(comp ? comp.errorList() : [])];
   if (contextLost) errs.push('Grafika ztratila kontext — čekám na obnovu.');
-  if (audio.status.startsWith('vstup nedostupný')) errs.push(audio.status);
+  if (audio.status.includes('nedostupný')) errs.push(audio.status);
   const stats: OutputStats = {
     fps: statFrames ? 1000 / (statSum / statFrames) : 0,
     frameMs: statFrames ? statSum / statFrames : 0,
@@ -120,8 +136,8 @@ async function finishTest() {
   testDone = { running: false, elapsed: r.durationS, duration: r.durationS, label: `${r.passed ? 'PROŠLO ✅' : 'NEPROŠLO ❌'} · ${r.avgFps} fps · zpráva: ${path}` };
   sendStats();
   if (smokeMode) {
-    const errs = comp.errors.size;
-    vj.smokeDone(errs === 0 && r.frames > 10, `audio=${audio.status} dur=${audio.duration.toFixed(1)} pos=${audio.position.toFixed(1)} frames=${r.frames} fps=${r.avgFps} gpu=${r.context.gpu} float16=${r.context.float16} shaderErrors=${errs} ${[...comp.errors.values()].join(' | ')} report=${path}`);
+    const errs = comp.errorList();
+    vj.smokeDone(errs.length === 0 && r.frames > 10, `audio=${audio.status} dur=${audio.duration.toFixed(1)} pos=${audio.position.toFixed(1)} frames=${r.frames} fps=${r.avgFps} gpu=${r.context.gpu} float16=${r.context.float16} layers=${layersOn.join(',')} shaderErrors=${errs.length} ${errs.join(' | ')} report=${path}`);
   }
 }
 

@@ -13,12 +13,13 @@ export class Gl {
   /** 1×1 průhledná textura pro nepoužité samplery (zabrání smyčce čtení/zápisu do téhož bufferu). */
   readonly dummy: WebGLTexture;
   private vs: WebGLShader;
+  private vao: WebGLVertexArrayObject;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
     this.float16 = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
     gl.getExtension('OES_texture_float_linear');
-    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const vao = gl.createVertexArray()!; gl.bindVertexArray(vao); this.vao = vao;
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
@@ -92,6 +93,8 @@ export class Gl {
   /** Nakreslí program přes celý target (null = obrazovka o velikosti screenW×screenH). */
   draw(prog: Prog, target: Target | null, uniforms: Record<string, Uniform>, textures: Record<string, WebGLTexture> = {}, screenW = 0, screenH = 0) {
     const gl = this.gl;
+    // 3D scény (Three.js) sdílejí kontext a mění VAO — náš trojúhelník přes celou plochu navážeme vždy znovu.
+    gl.bindVertexArray(this.vao);
     gl.useProgram(prog.p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fb : null);
     gl.viewport(0, 0, target ? target.w : screenW, target ? target.h : screenH);

@@ -31,6 +31,27 @@ export function slim(value: number, min: number, max: number, step: number, onIn
   return r;
 }
 
+// ---------- přejmenování na místě (dvojklik na název) ----------
+let editing = 0;
+/** Právě se něco přejmenovává — mřížka se mezitím nepřekresluje (smazala by rozepsaný text). */
+export const isEditing = () => editing > 0;
+/** Nahradí prvek textovým polem. Enter / klik vedle = uložit, Esc = zrušit. onDone(null) = zrušeno. */
+export function inlineEdit(target: HTMLElement, value: string, placeholder: string, onDone: (v: string | null) => void) {
+  const inp = el('input', { type: 'text', class: 'inedit', value, placeholder, spellcheck: 'false' }) as HTMLInputElement;
+  let done = false;
+  editing++;
+  const finish = (ok: boolean) => {
+    if (done) return; done = true; editing--;
+    inp.remove(); target.hidden = false;
+    onDone(ok ? inp.value.trim() : null);
+  };
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
+  inp.addEventListener('blur', () => finish(true));
+  for (const ev of ['click', 'dblclick', 'mousedown', 'pointerdown']) inp.addEventListener(ev, e => e.stopPropagation());
+  target.hidden = true; target.after(inp);
+  inp.focus(); inp.select();
+}
+
 // ---------- vyskakovací menu ----------
 let onMenuClose: (() => void) | null = null;
 export function openMenu(anchor: HTMLElement | { x: number; y: number }, width = 0): HTMLElement {

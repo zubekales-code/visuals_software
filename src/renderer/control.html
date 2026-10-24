@@ -11,7 +11,7 @@
 <header class="top">
   <button class="brand" id="brand" title="Sady (estetiky): uložit, načíst, nová — Ctrl+S uloží">
     <div class="logo">VJ</div>
-    <div class="brand-txt"><span class="proj" id="sadaName">Pracovní sada</span><span class="sub" id="sadaSub">uloženo automaticky · v0.3</span></div>
+    <div class="brand-txt"><span class="proj" id="sadaName">Pracovní sada</span><span class="sub" id="sadaSub">uloženo automaticky · v0.4</span></div>
   </button>
 
   <div class="seg tempo">
@@ -50,7 +50,7 @@
       <button class="iconbtn" id="libHide" title="Schovat knihovnu">‹</button>
     </div>
     <div class="tabs" id="libTabs">
-      <button data-tab="shader" class="on">Tvary</button><button data-tab="video">Videa</button><button data-tab="audio">Zvuk</button>
+      <button data-tab="shader" class="on">Tvary</button><button data-tab="scene">3D</button><button data-tab="video">Videa</button><button data-tab="audio">Zvuk</button>
     </div>
     <input class="search" id="libSearch" type="search" placeholder="Hledat…">
     <div class="lib-list" id="libList"></div>
@@ -89,8 +89,9 @@
   <div class="card audio" id="audioCard">
     <div class="card-head"><span class="title">Zvuk</span><span class="muted sm ell" id="audioDev">—</span></div>
     <div class="srcbtns">
+      <button class="btn" data-src="system" title="Zvuk tohoto počítače: co právě hraje zvuková karta (Spotify, YouTube, přehrávač…)">Zvuk PC</button>
       <button class="btn" data-src="input" title="Zvuk z kabelu (line-in zvukovky)">Kabel</button>
-      <button class="btn" data-src="wav" title="Skladba z knihovny">Wav soubor</button>
+      <button class="btn" data-src="wav" title="Skladba z knihovny">Wav</button>
       <button class="btn" data-src="demo" title="Umělý rytmus 122 BPM na zkoušení">Demo</button>
     </div>
     <div class="srcrow" id="inRow"><select id="device"></select><button class="btn sm" id="loadDevices">Načíst vstupy</button></div>

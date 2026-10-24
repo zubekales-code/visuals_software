@@ -8,19 +8,39 @@ export type Drive = 'kick' | 'bass' | 'high' | 'loud' | 'none';
 export type LayerScale = 1 | 0.5 | 0.25;
 export type Blend = 'normal' | 'add' | 'screen';
 
-/** Hodnoty klipu, které přepisují výchozí hodnoty z hlavičky shaderu (co není vyplněné, bere se z hlavičky). */
+/** 3D kamera (jen scény). Rotace −1…1 (0 = stojí), ostatní 0…1. */
+export interface Cam3D {
+  orbit: number;         // ROTACE KAMERY: rychlost obletu kolem scény
+  height: number;        // VÝŠKA KAMERY: pohled zespodu → shora
+  dist: number;          // VZDÁLENOST: blízko → daleko
+  fov: number;           // ZORNÉ POLE: teleobjektiv → širokoúhlý
+  spin: number;          // ROTACE OBJEKTU: otáčení scény kolem osy
+  kick: number;          // ÚDER KAMERY: přiblížení na úder
+}
+export const CAM_DEFAULTS: Cam3D = { orbit: 0.2, height: 0.45, dist: 0.5, fov: 0.35, spin: 0, kick: 0.2 };
+
+export type StrobeMode = 'frames' | 'hit';
+
+/** Hodnoty klipu, které přepisují výchozí hodnoty z hlavičky shaderu (co není vyplněné, bere se z hlavičky).
+ *  Sjednocené názvy v pultu: hard = TVRDOST, speed = OSCILACE, density = MNOŽSTVÍ, size = TLOUŠŤKA. */
 export interface ClipParams {
   drive?: Drive; hard?: number; speed?: number; density?: number; size?: number; colA?: string; colB?: string;
+  glow?: number;         // GLOW jen tohoto klipu 0–1
+  strobe?: number;       // STROBO: 0 = vyp, n = n snímků svítí / n snímků tma (nebo n snímků po úderu)
+  strobeMode?: StrobeMode;
+  cam?: Partial<Cam3D>;  // 3D kamera (scény)
   custom?: Record<string, number>;
 }
 
 /** Klip = vizuál (soubor) + vlastní hodnoty. Leží v buňce mřížky vrstva × sloupec. */
 export interface ClipState {
-  content: string;       // id obsahu: "shader:padla" | "video:test_alfa.webm"
+  content: string;       // id obsahu: "shader:padla" | "video:test_alfa.webm" | "scene:sloupy"
   params: ClipParams;
+  name?: string;         // vlastní název klipu (jinak název vizuálu)
 }
 
 export interface LayerState {
+  name?: string;         // vlastní název vrstvy (jinak „Vrstva N“)
   on: boolean;           // oko: vrstva zapnutá
   opacity: number;       // 0–1
   scale: LayerScale;     // rozlišení vrstvy vůči výstupu
@@ -39,8 +59,34 @@ export function layerLive(l: LayerState): boolean {
   return l.on && !!activeClip(l);
 }
 
+/** Spustí celý sloupec: v každé vrstvě hraje klip z tohoto sloupce, kde sloupec nemá klip, vrstva ztichne.
+ *  Klipy z jiných sloupců se tím zastaví. */
+export function launchColumn(layers: LayerState[], col: number) {
+  for (const l of layers) l.active = l.clips[col] ? col : -1;
+}
+export function stopAll(layers: LayerState[]) { for (const l of layers) l.active = -1; }
+
+/** Stav sloupce pro hlavičku: 'full' = hraje celý sloupec a nic jiného, 'part' = hraje z něj aspoň něco. */
+export function columnStatus(layers: LayerState[], col: number): 'full' | 'part' | '' {
+  let any = false, full = true, filled = false;
+  for (const l of layers) {
+    if (l.clips[col]) { filled = true; if (l.active === col) any = true; else full = false; }
+    else if (l.active >= 0) full = false;
+  }
+  if (!filled || !any) return '';
+  return full ? 'full' : 'part';
+}
+
+/** STROBO: má být vrstva v tomto snímku vidět? n = počet snímků (0 = strobo vypnuté). */
+export function strobeGate(frame: number, n: number, mode: StrobeMode, framesSinceHit: number): boolean {
+  n = Math.round(n);
+  if (n <= 0) return true;
+  if (mode === 'hit') return framesSinceHit < n;
+  return Math.floor(frame / n) % 2 === 0;
+}
+
 export interface AudioSettings {
-  source: 'demo' | 'wav' | 'input';
+  source: 'demo' | 'wav' | 'input' | 'system';
   wavPath: string;       // cesta k wav na disku (jen pro source = wav)
   deviceId: string;      // vstup (line-in) pro source = input
   playing: boolean;      // přehrávání wav
@@ -49,6 +95,7 @@ export interface AudioSettings {
 
 export interface AppState {
   layers: LayerState[];  // index 0 = Vrstva 1 (dole)
+  colNames: string[];    // vlastní názvy sloupců ("" = číslo)
   selected: { layer: number; col: number } | null; // klip ve vlastnostech
   bpm: number;
   locked: boolean;       // zámek: myš nic nezmění, klávesy fungují
@@ -76,22 +123,23 @@ export interface ShaderHeader {
   };
   labels?: Record<string, string>;
   params?: ShaderParam[]; // vlastní posuvníky navíc → uniform float <name>
+  camera?: Cam3D & { distance: number; targetY: number }; // jen 3D scény: výchozí kamera
 }
 
 export interface ContentItem {
-  id: string;            // "shader:padla" | "video:soubor.webm" | "audio:pisen.wav"
-  kind: 'shader' | 'video' | 'audio';
+  id: string;            // "shader:padla" | "video:soubor.webm" | "audio:pisen.wav" | "scene:sloupy"
+  kind: 'shader' | 'video' | 'audio' | 'scene';
   name: string;
   file: string;          // název souboru
   path?: string;         // cesta na disku (knihovna)
   url?: string;          // file:// URL (video, zvuk)
-  source?: string;       // text shaderu
+  source?: string;       // text shaderu / 3D scény
 }
 
 export interface ImportResult { ids: string[]; errors: string[] }
 export interface SadaInfo { name: string; savedAt: string }
 /** Uložená sada = rozložení mřížky + klipy s nastavením (estetika). Systém pod tím je stejný. */
-export interface SadaFile { app: 'vj'; version: 1; name: string; savedAt: string; layers: LayerState[]; glow: AppState['glow']; bpm: number }
+export interface SadaFile { app: 'vj'; version: 1; name: string; savedAt: string; layers: LayerState[]; glow: AppState['glow']; bpm: number; colNames?: string[] }
 export interface OutputPlacement { displayId: number; fullscreen: boolean }
 export interface DisplaysInfo { displays: DisplayInfo[]; placement: OutputPlacement }
 
@@ -153,6 +201,8 @@ export interface VjApi {
   onKey(cb: (key: string) => void): void;
   /** Obnovovací frekvence displeje, na kterém je výstupní okno (z Windows). */
   onDisplayHz(cb: (hz: number) => void): void;
+  /** Zvuk tohoto PC (co hraje zvuková karta): výstupní okno si ho vyžádá, vrací "" nebo text chyby. */
+  captureSystemAudio(): Promise<string>;
   isSmoke(): Promise<boolean>;
   smokeDone(ok: boolean, info: string): void;
 }
@@ -168,10 +218,10 @@ export function defaultState(): AppState {
   const grid: (ClipState | null)[][] = [
     [clip('video:test_prostredi.mp4')],
     [clip('video:test_alfa.webm')],
-    [clip('shader:gradient'), clip('shader:bloky')],
-    [clip('shader:cary'), clip('shader:padla')],
-    [clip('shader:kulicka'), clip('shader:skrabance')],
-    [clip('shader:tecky'), clip('shader:dlazdice')],
+    [clip('shader:gradient'), clip('shader:bloky'), clip('scene:sloupy')],
+    [clip('shader:cary'), clip('shader:padla'), clip('scene:mrak')],
+    [clip('shader:kulicka'), clip('shader:skrabance'), clip('scene:drat')],
+    [clip('shader:tecky'), clip('shader:dlazdice'), clip('scene:cerv')],
     [clip('shader:padla', { hard: 1 }), clip('shader:cary', { density: 0.6, colA: '#ffffff' })],
     [clip('shader:skrabance', { density: 0.7 }), clip('shader:tecky', { density: 0.8, colA: '#f4f6f2', colB: '#1b1f1a' })],
   ];
@@ -181,6 +231,7 @@ export function defaultState(): AppState {
       clips: Array.from({ length: CLIP_COLS }, (_, c) => row[c] ?? null),
       active: i === 0 ? -1 : 0, // výchozí = sestava brány: 7 vrstev vč. videa
     })),
+    colNames: Array(CLIP_COLS).fill(''),
     selected: { layer: 3, col: 0 },
     bpm: 122,
     locked: false,

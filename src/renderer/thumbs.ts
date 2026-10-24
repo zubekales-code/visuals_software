@@ -1,9 +1,13 @@
-// Náhled klipu = jeden snímek. Shader se vykreslí jednou do malého plátna, video se vezme snímek v 1. sekundě.
+// Náhled klipu = jeden snímek. Shader se vykreslí jednou do malého plátna, video se vezme snímek v 1. sekundě,
+// 3D scéna se nechá chvilku běžet (s umělými údery) a vyfotí se.
 // Výsledek je obrázek (data URL) v mezipaměti, takže mřížka nic nepřekresluje za běhu.
-import type { ClipParams, ContentItem } from '../shared/types';
+import type { AudioFrame, ClipParams, ContentItem } from '../shared/types';
+import { CAM_DEFAULTS } from '../shared/types';
 import { parseShaderHeader, hexToRgb } from '../shared/shader-header';
 import { Gl, type Prog } from './engine/gl';
-import { buildElementSource } from './engine/glsl';
+import { buildElementSource, FS_COPY } from './engine/glsl';
+import { SceneHost, sceneRegistry } from './engine/scene-host';
+import { LayerRuntime } from './engine/layer-runtime';
 
 const W = 192, H = 108;
 
@@ -13,6 +17,8 @@ export class Thumbs {
   private cache = new Map<string, string>();
   private pending = new Map<string, Promise<string>>();
   private progs = new Map<string, { src: string; prog: Prog; header: ReturnType<typeof parseShaderHeader>['header'] }>();
+  private host: SceneHost | null = null;
+  private copyProg: Prog | null = null;
 
   constructor(private onRestored: () => void) {
     this.canvas.width = W; this.canvas.height = H;
@@ -22,7 +28,7 @@ export class Thumbs {
     this.canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.g = null; });
     this.canvas.addEventListener('webglcontextrestored', () => {
       if (gl) this.g = new Gl(gl);
-      this.progs.clear();
+      this.progs.clear(); this.host = null; this.copyProg = null;
       for (const [k, v] of this.cache) if (!v) this.cache.delete(k);
       this.onRestored();
     });
@@ -31,12 +37,14 @@ export class Thumbs {
   /** Vrátí obrázek hned, když je hotový; jinak ho začne připravovat a zavolá onReady. */
   get(item: ContentItem | undefined, params: ClipParams, onReady: () => void): string | null {
     if (!item) return null;
-    const key = item.id + '|' + (item.source?.length ?? 0) + '|' + JSON.stringify(params);
+    // GLOW a STROBO náhled nemění (jsou to efekty nad hotovým obrazem) → nepřekreslovat kvůli nim.
+    const { glow: _g, strobe: _s, strobeMode: _m, ...look } = params;
+    const key = item.id + '|' + (item.source?.length ?? 0) + '|' + JSON.stringify(look);
     const hit = this.cache.get(key);
     if (hit) return hit;
     if (!this.pending.has(key)) {
-      if (item.kind === 'shader' && !this.g) return null; // grafika se obnovuje
-      const p = (item.kind === 'video' ? this.video(item) : new Promise<string>(res => res(this.shader(item, params))))
+      if ((item.kind === 'shader' || item.kind === 'scene') && !this.g) return null; // grafika se obnovuje
+      const p = (item.kind === 'video' ? this.video(item) : item.kind === 'scene' ? this.scene(item, params) : new Promise<string>(res => res(this.shader(item, params))))
         .then(url => { this.cache.set(key, url); this.pending.delete(key); onReady(); return url; })
         .catch(() => { this.pending.delete(key); if (this.g) this.cache.set(key, ''); return ''; });
       this.pending.set(key, p);
@@ -64,6 +72,40 @@ export class Thumbs {
     g.clear(null);
     g.draw(entry.prog, null, u, { uPrev: g.dummy }, W, H);
     return this.canvas.toDataURL('image/png');
+  }
+
+  /** 3D scéna: 1,5 s simulace s úderem každých 12 snímků, pak jeden snímek. */
+  private async scene(item: ContentItem, p: ClipParams): Promise<string> {
+    const en = await sceneRegistry.ensure(item).ready;
+    const g = this.g; if (!g || !en.def) return '';
+    this.host ??= new SceneHost(g.gl, this.canvas);
+    this.copyProg ??= g.program(FS_COPY, 'copy');
+    const inst = this.host.create(en);
+    try {
+      if (!inst.run) return '';
+      const hd = en.header?.defaults, d = { ...(hd ?? { drive: 'kick', hard: 0.3, speed: 1, density: 0.5, size: 0.5, colA: '#ffffff', colB: '#ffffff' }), ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) } as any;
+      const hc = en.header?.camera;
+      const cam = { ...CAM_DEFAULTS, ...(hc ? { orbit: hc.orbit, height: hc.height, dist: hc.dist, fov: hc.fov, spin: hc.spin, kick: hc.kick } : {}), ...(p.cam ?? {}) };
+      const rt = new LayerRuntime();
+      const fa: AudioFrame = { t: 0, kick: { v: 0, hit: false }, bass: { v: 0, hit: false }, high: { v: 0, hit: false }, loud: { v: 0.6, hit: false } };
+      const [ar, ag, ab] = hexToRgb(d.colA), [br, bg, bb] = hexToRgb(d.colB);
+      for (let k = 0; k < 45; k++) {
+        const hit = k % 12 === 0;
+        for (const b of [fa.kick, fa.bass, fa.high]) { b.hit = hit; b.v = hit ? 1 : b.v * 0.8; }
+        rt.update(d, fa, true, 1 / 30);
+        const f = inst.f;
+        f.t = k / 30; f.frame = k; f.phase = rt.phase; f.dphase = rt.dphase; f.drive = rt.drive; f.hit = rt.hit;
+        f.newHit = rt.framesSinceHit === 0; f.sinceHit = rt.sinceHit; f.hitCount = rt.hitCount; f.loud = 0.6;
+        f.hard = d.hard; f.speed = d.speed; f.density = d.density; f.size = d.size;
+        f.colA.setRGB(ar, ag, ab); f.colB.setRGB(br, bg, bb);
+        inst.step(cam, 1 / 30, W, H);
+      }
+      const tex = this.host.render(inst, W, H);
+      if (!tex) return '';
+      g.clear(null);
+      g.draw(this.copyProg, null, { uRes: [W, H], uMul: 1 }, { uTex: tex }, W, H);
+      return this.canvas.toDataURL('image/png');
+    } finally { this.host.release(inst); }
   }
 
   private video(item: ContentItem): Promise<string> {

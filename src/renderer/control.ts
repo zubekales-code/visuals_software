@@ -1,17 +1,18 @@
 // Pult podle schváleného konceptu: horní lišta, knihovna | mřížka vrstvy × klipy, dole náhled | vlastnosti klipu | zvuk.
 // Pult je „pravda“ o stavu: každou změnu pošle výstupu a uloží (autosave). Sady (estetiky) se ukládají do knihovny.
-import type { AppState, AudioFrame, Blend, ClipParams, ClipState, ContentItem, DisplaysInfo, Drive, LayerScale, LayerState, OutputStats, SadaFile, ShaderHeader } from '../shared/types';
-import { defaultState, activeClip, layerLive, LAYER_COUNT, CLIP_COLS } from '../shared/types';
+import type { AppState, AudioFrame, Blend, Cam3D, ClipParams, ClipState, ContentItem, DisplaysInfo, Drive, LayerScale, LayerState, OutputStats, SadaFile, ShaderHeader, StrobeMode } from '../shared/types';
+import { defaultState, activeClip, layerLive, launchColumn, stopAll, columnStatus, LAYER_COUNT, CLIP_COLS, CAM_DEFAULTS } from '../shared/types';
 import { parseShaderHeader } from '../shared/shader-header';
 import { Compositor } from './engine/compositor';
 import { Thumbs } from './thumbs';
 import { clipForKey, keyLabel, keyName } from './keys';
-import { $, el, svg, slim, setRangeFill, openMenu, closeMenu, setMenuClose, toast, fmt, mmss } from './ui/dom';
+import { $, el, svg, slim, setRangeFill, openMenu, closeMenu, setMenuClose, toast, fmt, mmss, inlineEdit, isEditing } from './ui/dom';
 import { initLayout } from './ui/layout';
 
 const vj = window.vj;
 const EYE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
 const MIME_CLIP = 'application/x-vj-clip', MIME_ITEM = 'application/x-vj-item';
+const VERSION = 'v0.4';
 
 // ---------- stav + autosave ----------
 const SAVE_KEY = 'vj.state.v2';
@@ -19,15 +20,22 @@ function sanitizeLayers(src: unknown, fallback: LayerState[]): LayerState[] | nu
   if (!Array.isArray(src) || src.length !== LAYER_COUNT || !src.every((l: any) => Array.isArray(l?.clips))) return null;
   return src.map((l: LayerState, i: number) => ({
     ...fallback[i], ...l,
-    clips: Array.from({ length: CLIP_COLS }, (_, c) => { const x = l.clips[c]; return x && typeof x.content === 'string' ? { content: x.content, params: x.params ?? {} } : null; }),
+    name: typeof l.name === 'string' ? l.name : undefined,
+    clips: Array.from({ length: CLIP_COLS }, (_, c) => {
+      const x = l.clips[c];
+      return x && typeof x.content === 'string' ? { content: x.content, params: x.params ?? {}, ...(typeof x.name === 'string' && x.name ? { name: x.name } : {}) } : null;
+    }),
   }));
+}
+function sanitizeColNames(src: unknown): string[] {
+  return Array.from({ length: CLIP_COLS }, (_, c) => Array.isArray(src) && typeof src[c] === 'string' ? src[c] : '');
 }
 function loadState(): AppState {
   const d = defaultState();
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
     const layers = s && sanitizeLayers(s.layers, d.layers);
-    if (layers) return { ...d, ...s, layers, glow: { ...d.glow, ...s.glow }, audio: { ...d.audio, ...s.audio, playing: false }, black: false, locked: false, sada: s.sada ?? '' };
+    if (layers) return { ...d, ...s, layers, colNames: sanitizeColNames(s.colNames), glow: { ...d.glow, ...s.glow }, audio: { ...d.audio, ...s.audio, playing: false }, black: false, locked: false, sada: s.sada ?? '' };
   } catch { /* poškozený záznam → výchozí stav */ }
   return d;
 }
@@ -54,9 +62,13 @@ const thumbs = new Thumbs(() => { scheduleGrid(); scheduleLib(); });
 function setContent(list: ContentItem[]) {
   content = list; byId = new Map(list.map(c => [c.id, c]));
   headers.clear();
-  for (const c of list) if (c.kind === 'shader' && c.source) { try { headers.set(c.id, parseShaderHeader(c.source).header); } catch { /* chyba se ukáže v testu */ } }
+  for (const c of list) if ((c.kind === 'shader' || c.kind === 'scene') && c.source) { try { headers.set(c.id, parseShaderHeader(c.source).header); } catch { /* chyba se ukáže v testu */ } }
 }
 const itemName = (id: string) => byId.get(id)?.name ?? id.replace(/^\w+:/, '') + ' (chybí)';
+/** Název klipu v mřížce: vlastní název, jinak název vizuálu. */
+const clipName = (c: ClipState) => c.name || itemName(c.content);
+const layerName = (i: number) => state.layers[i]?.name || `Vrstva ${i + 1}`;
+const colName = (c: number) => state.colNames[c] || '';
 const isAlphaVideo = (id: string) => id.startsWith('video:') && id.toLowerCase().endsWith('.webm');
 
 // ---------- akce s klipy ----------
@@ -72,6 +84,17 @@ function selectedClip(): ClipState | null {
 function clickClip(layer: number, col: number) {
   state.selected = { layer, col };
   if (state.layers[layer].active === col) stop(layer); else launch(layer, col);
+}
+/** Klik na název klipu: jen otevře jeho vlastnosti, klip dál hraje (nebo dál nehraje). */
+function selectClip(layer: number, col: number) {
+  state.selected = { layer, col };
+  send(false); renderGrid(); renderProps();
+}
+/** Klik na hlavičku sloupce: hraje jen tento sloupec. Když už hraje celý, druhý klik zastaví vše. */
+function clickColumn(col: number) {
+  if (columnStatus(state.layers, col) === 'full') stopAll(state.layers);
+  else launchColumn(state.layers, col);
+  send(); renderGrid(); renderProps();
 }
 /** Přesun klipu (prohození s cílovou buňkou) nebo kopie (Ctrl). Hrající klip hraje dál, když zůstane ve své vrstvě. */
 function moveClip(fl: number, fc: number, tl: number, tc: number, copy: boolean) {
@@ -142,11 +165,11 @@ function renderTop() {
 // ---------- sady (estetiky) ----------
 function renderSada() {
   $('sadaName').textContent = state.sada || 'Pracovní sada';
-  $('sadaSub').textContent = state.sada ? (dirty ? 'neuložené změny · Ctrl+S' : 'sada uložena · v0.3') : 'uloženo automaticky · v0.3';
+  $('sadaSub').textContent = state.sada ? (dirty ? 'neuložené změny · Ctrl+S' : 'sada uložena · ' + VERSION) : 'uloženo automaticky · ' + VERSION;
 }
 async function saveSadaAs(name: string) {
   name = name.trim(); if (!name) return;
-  const file: SadaFile = { app: 'vj', version: 1, name, savedAt: new Date().toISOString(), layers: state.layers, glow: state.glow, bpm: state.bpm };
+  const file: SadaFile = { app: 'vj', version: 1, name, savedAt: new Date().toISOString(), layers: state.layers, glow: state.glow, bpm: state.bpm, colNames: state.colNames };
   await vj.saveSada(name, JSON.stringify(file, null, 1));
   state.sada = name; dirty = false; send(false); renderSada();
   toast(`Sada „${name}“ uložena do knihovny.`);
@@ -157,7 +180,7 @@ async function loadSadaNamed(name: string) {
     const f = JSON.parse(txt ?? 'null') as SadaFile;
     const layers = sanitizeLayers(f?.layers, defaultState().layers);
     if (!layers) throw new Error('neplatný soubor');
-    state.layers = layers; state.glow = { ...state.glow, ...f.glow }; state.bpm = f.bpm || state.bpm;
+    state.layers = layers; state.glow = { ...state.glow, ...f.glow }; state.bpm = f.bpm || state.bpm; state.colNames = sanitizeColNames(f.colNames);
     state.sada = name; state.selected = null; dirty = false;
     send(false); renderAll();
     const missing = layers.flatMap(l => l.clips).filter(c => c && !byId.has(c.content)).length;
@@ -181,7 +204,8 @@ $('brand').onclick = async e => {
   const nb = el('button', { class: 'mitem danger' }, 'Nová prázdná sada…');
   nb.onclick = () => {
     if (nb.dataset.ok !== '1') { nb.dataset.ok = '1'; nb.textContent = 'Opravdu? Vyprázdní mřížku (uložené sady zůstanou) — klikni znovu'; return; }
-    state.layers.forEach(l => { l.clips = Array(CLIP_COLS).fill(null); l.active = -1; });
+    state.layers.forEach(l => { l.clips = Array(CLIP_COLS).fill(null); l.active = -1; l.name = undefined; });
+    state.colNames = Array(CLIP_COLS).fill('');
     state.sada = ''; state.selected = null; dirty = false; closeMenu(); commit();
   };
   m.append(nb, el('button', { class: 'mitem', onclick: () => { vj.openLibrary('sady'); closeMenu(); } }, 'Otevřít složku se sadami'));
@@ -304,6 +328,7 @@ function layerLabel(l: LayerState): string {
   const c = activeClip(l);
   if (!c) return 'nic nehraje';
   if (c.content.startsWith('video:')) return isAlphaVideo(c.content) ? 'video α' : 'video';
+  if (c.content.startsWith('scene:')) return '3D';
   return 'tvary';
 }
 const BLENDS: Blend[] = ['normal', 'add', 'screen'];
@@ -311,18 +336,22 @@ const BLEND_NAME: Record<Blend, string> = { normal: 'Normál', add: 'Add', scree
 const SCALE_NAME = (s: number) => s === 1 ? '1' : s === 0.5 ? '½' : '¼';
 
 function renderGrid() {
+  // Během přejmenování nepřekreslovat (zmizel by rozepsaný text) — po potvrzení se překreslí celý pult.
+  if (isEditing()) return;
   const head = $('colHead'); head.textContent = '';
-  head.append(el('span', {}, 'VRSTVY · klávesa spustí klip'));
-  for (let c = 1; c <= CLIP_COLS; c++) head.append(el('span', {}, String(c)));
+  head.append(el('span', { class: 'hlabel' }, 'VRSTVY · SLOUPCE ▸'));
+  for (let c = 0; c < CLIP_COLS; c++) head.append(colHeadEl(c));
 
   const rows = $('rows'); rows.textContent = '';
   for (let li = LAYER_COUNT - 1; li >= 0; li--) {
     const l = state.layers[li];
     const pct = el('span', { class: 'pct' }, Math.round(l.opacity * 100) + '%');
+    const nameEl = el('span', { class: 'name', title: 'Dvojklik = přejmenovat vrstvu' }, layerName(li));
+    nameEl.ondblclick = () => inlineEdit(nameEl, l.name ?? '', `Vrstva ${li + 1}`, v => { if (v !== null) { l.name = v || undefined; send(); } renderAll(); });
     const lh = el('div', { class: 'lhead' },
       el('div', { class: 'l1' },
         el('button', { class: 'eye' + (l.on ? ' on' : ''), title: 'Zapnout / vypnout vrstvu', 'aria-label': 'Zapnout nebo vypnout vrstvu', onclick: () => { l.on = !l.on; commit(); } }, svg(EYE)),
-        el('span', { class: 'name' }, `Vrstva ${li + 1}`),
+        nameEl,
         el('span', { class: 'label' }, layerLabel(l)),
         el('span', { class: 'ms', id: 'lms' + li }, '')),
       el('div', { class: 'l2' },
@@ -336,18 +365,43 @@ function renderGrid() {
   }
 }
 
+/** Hlavička sloupce: klik = hraje jen tento sloupec (druhý klik = zastavit vše), dvojklik = přejmenovat. */
+function colHeadEl(c: number) {
+  const st = columnStatus(state.layers, c);
+  const nm = colName(c);
+  const label = el('span', { class: 'cn' }, nm);
+  const b = el('button', { class: 'colbtn ' + st, 'data-menu-anchor': '1',
+    title: `${nm || 'Sloupec ' + (c + 1)} — klik = hraje jen tento sloupec (znovu = zastavit vše) · dvojklik = přejmenovat · pravý klik = menu` },
+    el('span', { class: 'cnum' }, String(c + 1)), label);
+  // Dvojklik posílá i dva kliky: druhý (detail 2) ignorujeme, jinak by sloupec hned zase zastavil.
+  b.onclick = e => { if (e.detail > 1) return; clickColumn(c); };
+  b.ondblclick = () => renameColumn(c, label);
+  b.oncontextmenu = e => {
+    e.preventDefault();
+    const m = openMenu(b, 220);
+    m.append(el('div', { class: 'mtitle' }, nm || `Sloupec ${c + 1}`));
+    m.append(el('button', { class: 'mitem', onclick: () => { closeMenu(); launchColumn(state.layers, c); send(); renderGrid(); renderProps(); } }, 'Spustit celý sloupec'));
+    m.append(el('button', { class: 'mitem', onclick: () => { closeMenu(); stopAll(state.layers); send(); renderGrid(); renderProps(); } }, 'Zastavit vše'));
+    m.append(el('button', { class: 'mitem', onclick: () => { closeMenu(); renameColumn(c, label); } }, 'Přejmenovat…'));
+  };
+  return b;
+}
+function renameColumn(c: number, label: HTMLElement) {
+  inlineEdit(label, state.colNames[c] ?? '', 'Název sloupce', v => { if (v !== null) { state.colNames[c] = v; send(); } renderAll(); });
+}
+
 function cellEl(li: number, c: number) {
   const l = state.layers[li], clip = l.clips[c];
   const playing = l.active === c && !!clip;
   const sel = state.selected?.layer === li && state.selected?.col === c;
   const cls = ['cell', clip ? 'filled' : '', clip && isAlphaVideo(clip.content) ? 'alpha' : '', playing ? 'playing' : '', sel ? 'selected' : ''].join(' ');
   const cell = el('button', { class: cls, draggable: clip ? 'true' : undefined, 'data-menu-anchor': '1',
-    title: clip ? `${itemName(clip.content)} — klik spustí / zastaví, táhni = přesun (Ctrl = kopie), pravý klik = menu` : 'Prázdná buňka — přetáhni sem klip z knihovny nebo klikni' });
+    title: clip ? `${clipName(clip)} — klik spustí / zastaví, táhni = přesun (Ctrl = kopie), pravý klik = menu` : 'Prázdná buňka — přetáhni sem klip z knihovny nebo klikni' });
   if (clip) {
     const url = thumbs.get(byId.get(clip.content), clip.params, scheduleGrid);
     if (url) cell.append(el('img', { src: url, alt: '', draggable: 'false' }));
     if (clip.content.startsWith('video:')) cell.append(el('span', { class: 'vbadge' }, isAlphaVideo(clip.content) ? 'VIDEO α' : 'VIDEO'));
-    if (playing) cell.append(el('span', { class: 'play', 'aria-label': 'hraje' }));
+    else if (clip.content.startsWith('scene:')) cell.append(el('span', { class: 'vbadge d3' }, '3D'));
   } else {
     cell.append(el('div', { class: 'empty' }));
   }
@@ -375,7 +429,18 @@ function cellEl(li: number, c: number) {
     else if (hasType(e, MIME_ITEM)) placeItem(dt.getData(MIME_ITEM), li, c);
     else if (isFileDrag(e)) { const ids = await importDropped(e); const vis = ids.find(id => !id.startsWith('audio:')); if (vis) placeItem(vis, li, c); else if (ids[0]) placeItem(ids[0], li, c); }
   });
-  return el('div', { class: 'cellwrap' }, cell, el('span', { class: 'cname' + (playing ? ' on' : '') }, clip ? itemName(clip.content) : ''));
+
+  // Název NAD klipem: klik = jen vlastnosti (klip hraje dál), dvojklik = přejmenovat.
+  const name = el('div', { class: 'cname' + (playing ? ' on' : '') + (sel ? ' sel' : ''),
+    title: clip ? 'Klik = nastavení klipu (hraje dál) · dvojklik = přejmenovat' : '' }, clip ? clipName(clip) : '');
+  if (clip) {
+    name.onclick = () => selectClip(li, c);
+    name.ondblclick = () => inlineEdit(name, clip.name ?? '', itemName(clip.content), v => {
+      if (v !== null) { clip.name = v && v !== itemName(clip.content) ? v : undefined; send(); }
+      renderAll();
+    });
+  }
+  return el('div', { class: 'cellwrap' }, name, cell);
 }
 
 let gridT: ReturnType<typeof setTimeout> | null = null;
@@ -388,7 +453,7 @@ function addMenu(anchor: HTMLElement, li: number, c: number, replace = false) {
     m.append(el('button', { class: 'mitem', onclick: () => {
       state.layers[li].clips[c] = { content: it.id, params: {} };
       state.selected = { layer: li, col: c }; closeMenu(); commit();
-    } }, (it.kind === 'video' ? '🎞  ' : '◆  ') + it.name));
+    } }, (it.kind === 'video' ? '🎞  ' : it.kind === 'scene' ? '▲  ' : '◆  ') + it.name));
   }
   m.append(el('div', { class: 'msep' }));
   m.append(el('button', { class: 'mitem', onclick: async () => {
@@ -403,9 +468,14 @@ function addMenu(anchor: HTMLElement, li: number, c: number, replace = false) {
 function clipMenu(anchor: HTMLElement, li: number, c: number) {
   const l = state.layers[li], clip = l.clips[c]!;
   const m = openMenu(anchor);
-  m.append(el('div', { class: 'mtitle' }, `${itemName(clip.content)} · klávesa ${keyLabel(li, c)}`));
+  m.append(el('div', { class: 'mtitle' }, `${clipName(clip)} · klávesa ${keyLabel(li, c)}`));
   if (l.active === c) m.append(el('button', { class: 'mitem', onclick: () => { closeMenu(); stop(li); } }, 'Zastavit'));
   else m.append(el('button', { class: 'mitem', onclick: () => { closeMenu(); state.selected = { layer: li, col: c }; launch(li, c); } }, 'Spustit'));
+  m.append(el('button', { class: 'mitem', onclick: () => {
+    closeMenu();
+    const nm = anchor.closest('.cellwrap')?.querySelector<HTMLElement>('.cname');
+    if (nm) nm.dispatchEvent(new MouseEvent('dblclick'));
+  } }, 'Přejmenovat…'));
   m.append(el('button', { class: 'mitem', onclick: () => addMenu(anchor, li, c, true) }, 'Změnit vizuál…'));
   const free = l.clips.findIndex((x, i) => !x && i !== c);
   if (free >= 0) m.append(el('button', { class: 'mitem', onclick: () => {
@@ -422,7 +492,7 @@ function clipMenu(anchor: HTMLElement, li: number, c: number) {
 }
 
 // ---------- knihovna ----------
-let libTab: 'shader' | 'video' | 'audio' = 'shader';
+let libTab: 'shader' | 'scene' | 'video' | 'audio' = 'shader';
 document.querySelectorAll<HTMLButtonElement>('#libTabs button').forEach(b => b.onclick = () => {
   libTab = b.dataset.tab as typeof libTab;
   document.querySelectorAll('#libTabs button').forEach(x => x.classList.toggle('on', x === b));
@@ -435,7 +505,7 @@ $('libAdd').onclick = async () => {
   if (!r) return;
   if (r.errors.length) toast('Nepřidáno:\n' + r.errors.join('\n'), true, 6000); else toast(`Přidáno do knihovny: ${r.ids.length}`);
 };
-$('libFolder').onclick = () => vj.openLibrary(libTab === 'shader' ? 'tvary' : libTab === 'video' ? 'videa' : 'zvuk');
+$('libFolder').onclick = () => vj.openLibrary(({ shader: 'tvary', scene: 'sceny', video: 'videa', audio: 'zvuk' } as const)[libTab]);
 fileDropZone($('lib'), $('libDrop'), ids => { if (ids[0]) { const k = ids[0].split(':')[0]; libTab = k as typeof libTab; document.querySelectorAll<HTMLButtonElement>('#libTabs button').forEach(x => x.classList.toggle('on', x.dataset.tab === libTab)); renderLib(); } });
 vj.onLibraryProgress(t => { const f = $('libFoot'); f.classList.toggle('busy', !!t); f.textContent = t || 'Přetáhni do buňky v mřížce. Soubory z počítače přetáhni sem.'; });
 
@@ -445,7 +515,8 @@ function renderLib() {
   const items = content.filter(c => c.kind === libTab && (!q || c.name.toLowerCase().includes(q) || c.file.toLowerCase().includes(q)));
   list.classList.toggle('rows', libTab === 'audio');
   if (!items.length) {
-    list.append(el('div', { class: 'muted sm' }, q ? 'Nic nenalezeno.' : libTab === 'audio' ? 'Žádné skladby. Přidej wav tlačítkem + Přidat nebo přetažením.' : 'Prázdné. Přidej soubory tlačítkem + Přidat nebo je sem přetáhni.'));
+    list.append(el('div', { class: 'muted sm' }, q ? 'Nic nenalezeno.' : libTab === 'audio' ? 'Žádné skladby. Přidej wav tlačítkem + Přidat nebo přetažením.'
+      : libTab === 'scene' ? 'Žádné 3D scény. Scéna je soubor .js ve složce knihovna\\3d.' : 'Prázdné. Přidej soubory tlačítkem + Přidat nebo je sem přetáhni.'));
     return;
   }
   for (const it of items) {
@@ -458,7 +529,7 @@ function renderLib() {
     const url = thumbs.get(it, {}, scheduleLib);
     const b = el('button', { class: 'litem', draggable: 'true', title: `${it.name} — přetáhni do buňky · dvojklik = do vybrané vrstvy` },
       el('div', { class: 'thumb' + (isAlphaVideo(it.id) ? ' alpha' : '') }, url ? el('img', { src: url, alt: '', draggable: 'false' }) : null,
-        it.kind === 'video' ? el('span', { class: 'vbadge' }, isAlphaVideo(it.id) ? 'VIDEO α' : 'VIDEO') : null),
+        it.kind === 'video' ? el('span', { class: 'vbadge' }, isAlphaVideo(it.id) ? 'VIDEO α' : 'VIDEO') : it.kind === 'scene' ? el('span', { class: 'vbadge d3' }, '3D') : null),
       el('span', {}, it.name));
     b.addEventListener('dragstart', e => { e.dataTransfer!.setData(MIME_ITEM, it.id); e.dataTransfer!.effectAllowed = 'copy'; });
     b.ondblclick = () => {
@@ -481,64 +552,96 @@ function scheduleLib() { if (libT) return; libT = setTimeout(() => { libT = null
 
 // ---------- vlastnosti klipu ----------
 const DRIVES: [Drive, string][] = [['kick', 'Kopák'], ['bass', 'Basa'], ['high', 'Výšky'], ['loud', 'Hlasitost'], ['none', 'Nic']];
+/** Sjednocené kategorie: stejné názvy u všech vizuálů. Co přesně dělají u daného vizuálu, říká hlavička (tooltip). */
+const UNIFIED: ['hard' | 'speed' | 'density' | 'size', string, number, number, string][] = [
+  ['hard', 'TVRDOST', 0, 1, '0 = plynule, 1 = ostře na úder'],
+  ['speed', 'OSCILACE', 0, 3, 'rychlost pohybu, kmitání a dýchání'],
+  ['density', 'MNOŽSTVÍ', 0, 1, 'počet a hustota prvků'],
+  ['size', 'TLOUŠŤKA', 0, 1, 'tloušťka a velikost prvků'],
+];
+const CAM_ROWS: [keyof Cam3D, string, number, number, string][] = [
+  ['orbit', 'ROTACE KAMERY', -1, 1, 'oblet kamery kolem scény · 0 = stojí, minus = opačný směr'],
+  ['height', 'VÝŠKA KAMERY', 0, 1, 'pohled zespodu → zboku → shora'],
+  ['dist', 'VZDÁLENOST', 0, 1, 'kamera blízko → daleko'],
+  ['fov', 'ZORNÉ POLE', 0, 1, 'teleobjektiv (plochý) → širokoúhlý (hloubka)'],
+  ['spin', 'ROTACE OBJEKTU', -1, 1, 'otáčení celé scény · 0 = stojí'],
+  ['kick', 'ÚDER KAMERY', 0, 1, 'přiblížení kamery na úder (podle „Reaguje na“)'],
+];
+const strobeTxt = (n: number) => n <= 0 ? 'vyp' : `${n} sn.`;
+
+/** Řádek s posuvníkem: název, posuvník, hodnota. */
+function sliderRow(label: string, tip: string, v0: number, min: number, max: number, step: number, show: (v: number) => string, onInput: (v: number) => void) {
+  const val = el('span', { class: 'val mono' }, show(v0));
+  return el('div', { class: 'prow', title: tip }, el('span', { class: 'plabel cat' }, label),
+    slim(v0, min, max, step, v => { val.textContent = show(v); onInput(v); }), val);
+}
 
 function renderProps() {
   const p = $('props'); p.textContent = '';
   const s = state.selected, clip = selectedClip();
   if (!s || !clip) {
     p.append(el('div', { class: 'card-head' }, el('span', { class: 'title' }, 'Vlastnosti')),
-      el('div', { class: 'hint' }, 'Klikni na klip v mřížce: první klik ho spustí, druhý zastaví. Tady se pak ukáže jeho nastavení. Pravý klik otevře menu, tažením klip přesuneš (s Ctrl zkopíruješ).'));
+      el('div', { class: 'hint' }, 'Klik na klip ho spustí, druhý klik zastaví. Klik na název nad klipem jen otevře jeho nastavení (klip hraje dál). Dvojklik na název = přejmenovat. Klik na číslo sloupce nahoře = hraje jen ten sloupec.'));
     return;
   }
   const l = state.layers[s.layer];
-  const isVideo = clip.content.startsWith('video:');
+  const kind = clip.content.split(':')[0];
+  const isVideo = kind === 'video', isScene = kind === 'scene';
   p.append(el('div', { class: 'card-head' },
-    el('span', { class: 'title ell' }, itemName(clip.content)),
-    el('span', { class: 'muted sm' }, `Vrstva ${s.layer + 1} · ${isVideo ? 'video' : 'shader'} · klávesa ${keyLabel(s.layer, s.col)}`),
+    el('span', { class: 'title ell' }, clipName(clip)),
+    el('span', { class: 'muted sm ell' }, `${layerName(s.layer)} · ${isVideo ? 'video' : isScene ? '3D scéna' : 'tvar'} · ${itemName(clip.content)} · klávesa ${keyLabel(s.layer, s.col)}`),
     el('div', { class: 'spacer' }),
-    el('span', { class: 'muted sm' }, l.active === s.col ? '▶ hraje' : 'nehraje')));
+    el('span', { class: 'muted sm', style: 'white-space:nowrap' }, l.active === s.col ? '▶ hraje' : 'nehraje')));
+
+  // Vždy nový objekt hodnot: kompozitor tak pozná změnu (náhled i výstup se hned překreslí).
+  const setP = (k: keyof ClipParams, v: unknown, thumb = true) => { clip.params = { ...clip.params, [k]: v }; send(); if (thumb) scheduleGrid(); };
+  const h = headers.get(clip.content);
+  const d = h?.defaults;
+  const cur = <K extends keyof ClipParams>(k: K) => (clip.params[k] ?? (d as any)?.[k]);
 
   p.append(el('span', { class: 'sect' }, 'KLIP'));
-  if (isVideo) {
-    p.append(el('div', { class: 'hint' }, 'Video hraje ve smyčce od začátku při každém spuštění. Na zvuk nereaguje.'));
-  } else {
-    const h = headers.get(clip.content);
-    if (!h) { p.append(el('div', { class: 'hint' }, 'Shader se nepodařilo načíst (chyba v hlavičce).')); }
-    else {
-      const d = h.defaults;
-      // Vždy nový objekt hodnot: kompozitor tak pozná změnu (náhled i výstup se hned překreslí).
-      const setP = (k: keyof ClipParams, v: any) => { clip.params = { ...clip.params, [k]: v }; send(); scheduleGrid(); };
-      const cur = <K extends keyof ClipParams>(k: K) => (clip.params[k] ?? (d as any)[k]);
-      p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Reaguje na'),
-        el('div', { class: 'segbtns orange' }, ...DRIVES.map(([k, n]) =>
-          el('button', { class: cur('drive') === k ? 'on' : '', onclick: () => { setP('drive', k); renderProps(); } }, n))),
-        el('span')));
-      const sliders: [keyof ClipParams, string, number, number, string][] = [
-        ['hard', 'Tvrdost', 0, 1, '0 = plynule, 1 = ostře na úder'],
-        ['speed', h.labels?.speed ?? 'Rychlost', 0, 3, ''],
-        ['density', h.labels?.density ?? 'Hustota', 0, 1, ''],
-        ['size', h.labels?.size ?? 'Velikost', 0, 1, ''],
-      ];
-      for (const [k, label, min, max, tip] of sliders) {
-        const v0 = cur(k) as number;
-        const val = el('span', { class: 'val mono' }, v0.toFixed(2));
-        p.append(el('div', { class: 'prow', title: tip }, el('span', { class: 'plabel' }, label),
-          slim(v0, min, max, 0.01, v => { val.textContent = v.toFixed(2); setP(k, v); }), val));
-      }
-      for (const q of h.params ?? []) {
-        const v0 = clip.params.custom?.[q.name] ?? q.default;
-        const val = el('span', { class: 'val mono' }, v0.toFixed(2));
-        p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, q.label ?? q.name),
-          slim(v0, q.min ?? 0, q.max ?? 1, 0.01, v => { val.textContent = v.toFixed(2); setP('custom', { ...(clip.params.custom ?? {}), [q.name]: v }); }), val));
-      }
-      const ca = el('input', { type: 'color', value: cur('colA'), title: 'Barva A' }) as HTMLInputElement;
-      const cb = el('input', { type: 'color', value: cur('colB'), title: 'Barva B' }) as HTMLInputElement;
-      ca.oninput = () => setP('colA', ca.value); cb.oninput = () => setP('colB', cb.value);
-      p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Barvy'),
-        el('div', { class: 'colors' }, ca, cb,
-          el('button', { class: 'btn sm', title: 'Vrátit hodnoty z hlavičky shaderu', onclick: () => { clip.params = {}; send(); renderProps(); scheduleGrid(); } }, 'Výchozí')),
-        el('span')));
-      p.append(el('div', { class: 'hint' }, 'Napojení jednotlivých posuvníků na zvuk (množství, náběh, doznění) přijde v Etapě 2.'));
+  if (!isVideo && !h) p.append(el('div', { class: 'hint' }, 'Vizuál se nepodařilo načíst (chyba v hlavičce).'));
+  if (!isVideo && h) {
+    p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Reaguje na'),
+      el('div', { class: 'segbtns orange' }, ...DRIVES.map(([k, n]) =>
+        el('button', { class: cur('drive') === k ? 'on' : '', onclick: () => { setP('drive', k); renderProps(); } }, n))),
+      el('span')));
+    for (const [k, label, min, max, tip] of UNIFIED) {
+      const own = h.labels?.[k];
+      p.append(sliderRow(label, tip + (own ? ` · u tohoto vizuálu: ${own}` : ''), cur(k) as number, min, max, 0.01, v => v.toFixed(2), v => setP(k, v)));
+    }
+  } else if (isVideo) {
+    p.append(el('div', { class: 'hint' }, 'Video hraje ve smyčce od začátku při každém spuštění. Na zvuk nereaguje; GLOW a STROBO fungují.'));
+  }
+  // GLOW + STROBO mají všechny klipy (i videa).
+  p.append(sliderRow('GLOW', 'záře kolem tohoto klipu (nezávisle na „Glow celku“)', clip.params.glow ?? 0, 0, 1, 0.01, v => v.toFixed(2), v => setP('glow', v, false)));
+  const sMode: StrobeMode = clip.params.strobeMode ?? 'frames';
+  p.append(sliderRow('STROBO', 'blikání po snímcích: n snímků svítí, n snímků tma (Na úder: n snímků po každém úderu)', clip.params.strobe ?? 0, 0, 12, 1, strobeTxt, v => setP('strobe', v, false)));
+  p.append(el('div', { class: 'prow' }, el('span'),
+    el('div', { class: 'segbtns' }, ...([['frames', 'Pravidelně'], ['hit', 'Na úder']] as [StrobeMode, string][]).map(([m, n]) =>
+      el('button', { class: sMode === m ? 'on' : '', onclick: () => { setP('strobeMode', m, false); renderProps(); } }, n))),
+    el('span')));
+
+  if (!isVideo && h) {
+    const ca = el('input', { type: 'color', value: cur('colA'), title: 'Barva A' }) as HTMLInputElement;
+    const cb = el('input', { type: 'color', value: cur('colB'), title: 'Barva B' }) as HTMLInputElement;
+    ca.oninput = () => setP('colA', ca.value); cb.oninput = () => setP('colB', cb.value);
+    p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Barvy'),
+      el('div', { class: 'colors' }, ca, cb,
+        el('button', { class: 'btn sm', title: 'Vrátit všechny hodnoty klipu na výchozí (z hlavičky vizuálu)', onclick: () => { clip.params = {}; send(); renderProps(); scheduleGrid(); } }, 'Výchozí')),
+      el('span')));
+    for (const q of h.params ?? []) {
+      const v0 = clip.params.custom?.[q.name] ?? q.default;
+      p.append(sliderRow(q.label ?? q.name, '', v0, q.min ?? 0, q.max ?? 1, 0.01, v => v.toFixed(2), v => setP('custom', { ...(clip.params.custom ?? {}), [q.name]: v })));
+    }
+  }
+
+  if (isScene && h) {
+    p.append(el('span', { class: 'sect' }, '3D KAMERA'));
+    const camDef = { ...CAM_DEFAULTS, ...(h.camera ?? {}) };
+    for (const [k, label, min, max, tip] of CAM_ROWS) {
+      const v0 = clip.params.cam?.[k] ?? camDef[k];
+      p.append(sliderRow(label, tip, v0, min, max, 0.01, v => v.toFixed(2), v => setP('cam', { ...(clip.params.cam ?? {}), [k]: v })));
     }
   }
 
@@ -615,7 +718,9 @@ function renderAudio() {
   for (const t of tracks) sel.append(el('option', { value: t.id, selected: t.id === tid || undefined }, t.name));
   $('playWav').textContent = a.source === 'wav' && a.playing ? '❚❚' : '▶';
   const trackName = byId.get(tid)?.name ?? (a.wavPath ? a.wavPath.split(/[\\/]/).pop()! : '');
-  $('audioDev').textContent = a.source === 'input' ? 'Kabel · ' + (deviceLabels.get(a.deviceId) ?? 'výchozí vstup') : a.source === 'wav' ? (trackName || 'vyber skladbu') : 'Demo signál 122 BPM';
+  $('audioDev').textContent = a.source === 'input' ? 'Kabel · ' + (deviceLabels.get(a.deviceId) ?? 'výchozí vstup')
+    : a.source === 'system' ? 'Zvuk tohoto PC · co právě hraje zvuková karta'
+    : a.source === 'wav' ? (trackName || 'vyber skladbu') : 'Demo signál 122 BPM';
   sens.value = String(a.sens); setRangeFill(sens); $('sensVal').textContent = Math.round(a.sens * 50).toString();
 }
 
@@ -635,6 +740,7 @@ glowOn.onchange = () => { state.glow.on = glowOn.checked; send(); };
 glowAmt.oninput = () => { state.glow.amount = +glowAmt.value; setRangeFill(glowAmt); send(); };
 
 // ---------- statistiky z výstupu ----------
+let lastAudioStatus = '';
 vj.onStats(s => {
   stats = s;
   const ok = s.fps >= s.refreshHz * 0.97;
@@ -647,6 +753,11 @@ vj.onStats(s => {
   $('screenLbl').textContent = `VÝSTUP · ${state.outW}×${state.outH} · ${fmt(s.fps, 0)} fps`;
   s.layerGpuMs.forEach((v, i) => { const e = document.getElementById('lms' + i); if (e) e.textContent = v === null || !layerLive(state.layers[i]) ? '' : v.toFixed(2) + ' ms'; });
   $('errBadge').hidden = !s.errors.length;
+  // Problém se zvukem (kabel / zvuk PC) ukázat rovnou v panelu Zvuk.
+  const audioBad = s.audio.includes('nedostupný');
+  $('audioDev').classList.toggle('bad', audioBad);
+  if (audioBad) $('audioDev').textContent = s.audio; else if (s.audio !== lastAudioStatus) renderAudio();
+  lastAudioStatus = s.audio;
   if (!seeking) {
     seek.value = String(s.audioDur ? s.audioPos / s.audioDur : 0); setRangeFill(seek);
     $('time').textContent = `${mmss(s.audioPos)} / ${mmss(s.audioDur)}`;
@@ -722,7 +833,9 @@ $('preview').addEventListener('webglcontextrestored', () => makePreview());
   send(false); renderAll();
   disp = await vj.displays(); renderOutBtn();
   if (await vj.isSmoke()) { // automatický test bez grafické karty: všech 8 vrstev, malé rozlišení
+    state = defaultState(); // vždy od výchozí sady (ne z autosave minulého testu)
     (window as any).__vjState = () => state; // jen pro automatický test ovládání
+    (window as any).__vjSet = (fn: (s: AppState) => void) => { fn(state); commit(); };
     setPreset('all'); state.outW = 640; state.outH = 360; state.selected = { layer: 3, col: 0 }; commit();
     setTimeout(() => { state.preview = false; send(false); }, 4000); // pult vyfotit s náhledem, měřit bez něj
     setTimeout(() => { const a = content.find(c => c.kind === 'audio'); if (a) chooseTrack(a.id); }, 5000); // zkouška přehrání wav

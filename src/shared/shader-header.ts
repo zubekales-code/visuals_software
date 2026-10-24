@@ -1,6 +1,7 @@
 // Čte hlavičku shaderu: JSON v komentáři /*{ ... }*/ na začátku souboru.
 // Díky ní se posuvníky (a jejich výchozí hodnoty) vytvoří samy — nový vizuál = jen nový soubor.
 import type { ShaderHeader, Drive } from './types';
+import { CAM_DEFAULTS } from './types';
 
 const DRIVES: Drive[] = ['kick', 'bass', 'high', 'loud', 'none'];
 
@@ -23,6 +24,15 @@ export function parseShaderHeader(src: string): { header: ShaderHeader; body: st
   const header: ShaderHeader = {
     name: String(raw.name ?? ''), popis: raw.popis, feedback: !!raw.feedback, defaults: d, labels: raw.labels, params,
   };
+  // 3D scény: výchozí kamera (posuvníky 0–1, rotace −1…1) + základní vzdálenost a výška cíle ve světě scény.
+  if (raw.camera && typeof raw.camera === 'object') {
+    const c = raw.camera, num = (v: unknown, def: number, lo: number, hi: number) => Number.isFinite(+(v as number)) && v !== null && v !== '' ? Math.min(hi, Math.max(lo, +(v as number))) : def;
+    header.camera = {
+      orbit: num(c.orbit, CAM_DEFAULTS.orbit, -1, 1), height: num(c.height, CAM_DEFAULTS.height, 0, 1), dist: num(c.dist, CAM_DEFAULTS.dist, 0, 1),
+      fov: num(c.fov, CAM_DEFAULTS.fov, 0, 1), spin: num(c.spin, CAM_DEFAULTS.spin, -1, 1), kick: num(c.kick, CAM_DEFAULTS.kick, 0, 1),
+      distance: num(c.distance, 10, 0.1, 1000), targetY: num(c.targetY, 0, -1000, 1000),
+    };
+  }
   // Tělo = zbytek souboru; počet řádků hlavičky zachováme prázdnými řádky, aby čísla řádků v chybách seděla.
   const headLines = m[0].split('\n').length - 1;
   return { header, body: '\n'.repeat(headLines) + src.slice(m[0].length) };

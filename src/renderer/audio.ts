@@ -1,5 +1,6 @@
 // Zvuk → pásma (kopák, basa, výšky, hlasitost) + detekce úderů.
-// Zdroj: demo signál 122 BPM (bez hudby), wav soubor, nebo vstup (kabel do line-in zvukovky).
+// Zdroj: demo signál 122 BPM (bez hudby), wav soubor, vstup (kabel do line-in zvukovky)
+// nebo zvuk tohoto PC (co právě hraje zvuková karta — Windows loopback).
 // Analýza je převzatá ze sandboxu; kopák = náhlý nárůst (onset), ne jen hlasitost pásma.
 import type { AudioFrame, AudioSettings, Band } from '../shared/types';
 
@@ -50,7 +51,11 @@ export class AudioEngine {
   private src: AudioNode | null = null;
   private stream: MediaStream | null = null;
   private cur = { source: '', wavUrl: '', deviceId: '' };
+  private gen = 0;            // každé přepnutí zdroje = nové číslo (pomalé zachycení nesmí přepsat novější volbu)
+  private live = false;       // analyzuje se skutečný zvuk ze streamu (kabel, zvuk PC)
   status = 'demo';
+  /** Zachytí zvuk tohoto PC. Dosadí výstupní okno (potřebuje pomoc hlavního procesu). */
+  captureSystem: (() => Promise<MediaStream>) | null = null;
 
   private ensureCtx() {
     if (this.ctx) return this.ctx;
@@ -66,6 +71,7 @@ export class AudioEngine {
     if (s.source !== this.cur.source || wavUrl !== this.cur.wavUrl || s.deviceId !== this.cur.deviceId) {
       this.cur = { source: s.source, wavUrl, deviceId: s.deviceId };
       this.disconnect();
+      const gen = ++this.gen;
       if (s.source === 'wav' && wavUrl) {
         const ctx = this.ensureCtx();
         const el = new Audio(); el.src = wavUrl; el.loop = true;
@@ -80,10 +86,27 @@ export class AudioEngine {
           this.stream = await navigator.mediaDevices.getUserMedia({
             audio: { deviceId: s.deviceId ? { exact: s.deviceId } : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
           });
+          if (gen !== this.gen) { this.stopStream(); return; }
           const node = ctx.createMediaStreamSource(this.stream);
           node.connect(this.analyser!); // do reproduktorů neposíláme (zpětná vazba)
-          this.src = node; this.status = 'vstup';
+          this.src = node; this.status = 'vstup'; this.live = true;
         } catch (e) { this.status = 'vstup nedostupný: ' + (e as Error).message; }
+      } else if (s.source === 'system') {
+        const ctx = this.ensureCtx();
+        this.status = 'zvuk PC: připojuji…';
+        try {
+          if (!this.captureSystem) throw new Error('není k dispozici');
+          const stream = await this.captureSystem();
+          if (gen !== this.gen) { stream.getTracks().forEach(t => t.stop()); return; }
+          this.stream = stream;
+          // Obraz obrazovky nepotřebujeme — zahodit (šetří výkon). Zvuk je samostatná stopa a běží dál.
+          stream.getVideoTracks().forEach(t => { t.stop(); stream.removeTrack(t); });
+          if (!stream.getAudioTracks().length) throw new Error('Windows neposlal žádný zvuk (funguje jen na Windows)');
+          const node = ctx.createMediaStreamSource(stream);
+          node.connect(this.analyser!); // do reproduktorů ne: hraje to už počítač sám
+          this.src = node; this.status = 'zvuk PC'; this.live = true;
+          stream.getAudioTracks()[0].addEventListener('ended', () => { if (gen === this.gen) { this.live = false; this.status = 'zvuk PC nedostupný: zachytávání skončilo — přepni zdroj znovu'; } });
+        } catch (e) { if (gen === this.gen) { this.stopStream(); this.status = 'zvuk PC nedostupný: ' + ((e as Error).message || String(e)); } }
       } else {
         this.status = 'demo';
       }
@@ -100,8 +123,10 @@ export class AudioEngine {
     try { this.analyser?.disconnect(); } catch { /* už odpojeno */ }
     this.src = null;
     if (this.el) { this.el.pause(); this.el.removeAttribute('src'); this.el.load(); this.el = null; }
-    this.stream?.getTracks().forEach(t => t.stop()); this.stream = null;
+    this.stopStream();
+    this.live = false;
   }
+  private stopStream() { this.stream?.getTracks().forEach(t => t.stop()); this.stream = null; }
 
   private energy(lo: number, hi: number) {
     const binHz = this.ctx!.sampleRate / this.analyser!.fftSize;
@@ -113,7 +138,7 @@ export class AudioEngine {
   /** Spočítá pásma pro tento snímek. */
   update(now: number, sens: number): AudioFrame {
     const f = this.frame; f.t = now;
-    const live = this.analyser && this.src && (this.status === 'vstup' || (this.status === 'wav' && this.el && !this.el.paused));
+    const live = this.analyser && this.src && (this.live || (this.status === 'wav' && this.el && !this.el.paused));
     if (!live) { this.demo.run(now, f); return f; }
     const an = this.analyser!;
     an.getFloatFrequencyData(this.freq); an.getFloatTimeDomainData(this.time);

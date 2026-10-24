@@ -1,5 +1,5 @@
 // Knihovna = složka VISUALS SOFTWARE\knihovna (vedle aplikace, aktualizace ji nepřepíše).
-//   tvary\*.glsl   videa\*.webm|*.mp4   zvuk\*.wav…   sady\*.json
+//   tvary\*.glsl   3d\*.js (3D scény)   videa\*.webm|*.mp4   zvuk\*.wav…   sady\*.json
 // Obsah aplikace (content\) je jen základní balíček: při startu se do knihovny doplní, co v ní ještě nebylo.
 import { app } from 'electron';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, copyFileSync, statSync } from 'node:fs';
@@ -15,12 +15,13 @@ export const APP_DIR = app.getAppPath();
 export const BASE_DIR = process.env.VJ_ZAKLAD
   || (basename(APP_DIR).toLowerCase() === 'app' && existsSync(join(dirname(APP_DIR), 'start.bat')) ? dirname(APP_DIR) : APP_DIR);
 export const LIB = process.env.VJ_KNIHOVNA || join(BASE_DIR, 'knihovna');
-export const DIRS = { tvary: join(LIB, 'tvary'), videa: join(LIB, 'videa'), zvuk: join(LIB, 'zvuk'), sady: join(LIB, 'sady') };
+export const DIRS = { tvary: join(LIB, 'tvary'), sceny: join(LIB, '3d'), videa: join(LIB, 'videa'), zvuk: join(LIB, 'zvuk'), sady: join(LIB, 'sady') };
 
 const VIDEO_OK = ['.webm', '.mp4'];
 const VIDEO_CONVERT = ['.mov', '.mkv', '.avi', '.m4v', '.gif', '.wmv'];
 const AUDIO = ['.wav', '.mp3', '.flac', '.ogg', '.aif', '.aiff', '.m4a'];
 const SHADER = ['.glsl', '.frag'];
+const SCENE = ['.js'];
 
 /** Založí složky a doplní základní balíček.
  *  Soubor ze základu se do knihovny zkopíruje jednou. Novou verzi ze základu dostane jen tehdy,
@@ -31,7 +32,7 @@ export function ensureLibrary() {
   let seeded: Record<string, string> = {};
   try { const m = JSON.parse(readFileSync(markFile, 'utf8')); if (m && !Array.isArray(m)) seeded = m; } catch { /* první start */ }
   const hash = (f: string) => createHash('md5').update(readFileSync(f)).digest('hex');
-  const pairs: [string, string][] = [[join(APP_DIR, 'content', 'shaders'), DIRS.tvary], [join(APP_DIR, 'content', 'videos'), DIRS.videa]];
+  const pairs: [string, string][] = [[join(APP_DIR, 'content', 'shaders'), DIRS.tvary], [join(APP_DIR, 'content', 'scenes'), DIRS.sceny], [join(APP_DIR, 'content', 'videos'), DIRS.videa]];
   for (const [src, dst] of pairs) {
     if (!existsSync(src)) continue;
     for (const f of readdirSync(src)) {
@@ -58,6 +59,14 @@ export function listLibrary(): ContentItem[] {
     let name = basename(f, '.glsl');
     try { name = parseShaderHeader(source).header.name || name; } catch { /* chybu ukáže až překlad */ }
     items.push({ id: 'shader:' + basename(f, '.glsl'), kind: 'shader', name, file: f, path, source });
+  }
+  for (const f of files(DIRS.sceny)) {
+    if (extname(f) !== '.js') continue;
+    const path = join(DIRS.sceny, f);
+    const source = readFileSync(path, 'utf8');
+    let name = basename(f, '.js');
+    try { name = parseShaderHeader(source).header.name || name; } catch { /* chybu ukáže až načtení */ }
+    items.push({ id: 'scene:' + basename(f, '.js'), kind: 'scene', name, file: f, path, source, url: pathToFileURL(path).href });
   }
   for (const f of files(DIRS.videa)) {
     if (!VIDEO_OK.includes(extname(f).toLowerCase())) continue;
@@ -113,6 +122,13 @@ export async function importFiles(paths: string[], onProgress: (txt: string) => 
         const f = uniqueName(DIRS.tvary, basename(src, ext) + '.glsl');
         writeFileSync(join(DIRS.tvary, f), text);
         res.ids.push('shader:' + basename(f, '.glsl'));
+      } else if (SCENE.includes(ext)) {
+        const text = readFileSync(src, 'utf8');
+        if (!/vjScene\s*\(/.test(text)) throw new Error('není to 3D scéna pro tuto aplikaci (chybí vjScene)');
+        parseShaderHeader(text);
+        const f = uniqueName(DIRS.sceny, basename(src));
+        writeFileSync(join(DIRS.sceny, f), text);
+        res.ids.push('scene:' + basename(f, '.js'));
       } else if (VIDEO_OK.includes(ext)) {
         onProgress(`Kopíruji ${name}…`);
         const f = uniqueName(DIRS.videa, name);
@@ -129,7 +145,7 @@ export async function importFiles(paths: string[], onProgress: (txt: string) => 
         copyFileSync(src, join(DIRS.zvuk, f));
         res.ids.push('audio:' + f);
       } else {
-        throw new Error('tento typ souboru knihovna nezná (tvary .glsl, videa, zvuk)');
+        throw new Error('tento typ souboru knihovna nezná (tvary .glsl, 3D scény .js, videa, zvuk)');
       }
     } catch (e) {
       res.errors.push(`${name}: ${(e as Error).message}`);

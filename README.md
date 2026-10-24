@@ -1,4 +1,4 @@
-# VJ software — v0.3 (Etapa 0: test výkonu)
+# VJ software — v0.4 (Etapa 0: test výkonu + první funkce pultu)
 
 Vlastní VJ aplikace pro Windows: průhledné vrstvy, vizuály reagující na zvuk, výstup na projektor.
 Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 vrstev s videem na 60 fps bez trhání.
@@ -25,7 +25,10 @@ Pak zkus i **Zátěž: všech 8**, rozlišení 1920×1080 i 2560×1440, glow zap
 
 ## Pult
 Vypadá podle schváleného konceptu (`INTERFACE KONCEPT`): nahoře lišta, vlevo **knihovna**, uprostřed mřížka **vrstvy × 10 sloupců**, dole **náhled výstupu | vlastnosti klipu | zvuk**.
-- **Klip** = vizuál + jeho vlastní hodnoty. **Klik spustí, druhý klik zastaví** (stejně jako klávesa). Nastavení klipu se ukáže dole.
+- **Klip** = vizuál + jeho vlastní hodnoty. **Klik na klip spustí, druhý klik zastaví** (stejně jako klávesa). Svítící rámeček = hraje.
+- **Název klipu** je nad klipem. **Klik na název** jen otevře nastavení klipu dole (klip hraje dál). **Dvojklik na název** = přejmenovat (např. „Škrábance hrubé“).
+- **Sloupce:** nahoře nad mřížkou jsou hlavičky sloupců 1–10. **Klik na hlavičku** = hraje jen tento sloupec (vše z jiných sloupců se zastaví, vrstvy bez klipu v tomto sloupci ztichnou). Druhý klik zastaví vše. **Dvojklik** = přejmenovat sloupec (např. „Intro“). Plně podbarvená hlavička = hraje celý sloupec, obrys = hraje z něj jen něco.
+- **Vrstvy:** dvojklik na název vrstvy = přejmenovat. Názvy vrstev, sloupců i klipů se ukládají do sady.
 - **Přetahování:** klip táhni do jiné buňky i jiné vrstvy (na obsazenou buňku se prohodí), **s Ctrl se zkopíruje**. Z knihovny táhni vizuál do buňky.
 - **Pravý klik na klip:** změnit vizuál, duplikovat jako variantu, ukázat soubor, odebrat.
 - **Hlavička vrstvy:** oko zapne/vypne vrstvu, posuvník = průhlednost, Normál/Add/Screen = prolínání, 1/½/¼ = rozlišení vrstvy (menší = levnější).
@@ -33,6 +36,30 @@ Vypadá podle schváleného konceptu (`INTERFACE KONCEPT`): nahoře lišta, vlev
 - **Výstup** (tlačítko v liště): na který monitor, celá obrazovka nebo okno, rozlišení obrazu. Připojený projektor = výstup na něj skočí sám, odpojený = výstup do okna.
 - **ZÁMEK** (Ctrl+L): myš nic nezmění, klávesy dál spouští klipy.
 - **Test výkonu** je v horní liště.
+
+## Nastavení klipu (panel dole uprostřed)
+Všechny vizuály mají **stejné kategorie** (co přesně dělají u daného vizuálu, ukáže bublina po najetí myší):
+| Kategorie | Co dělá |
+|---|---|
+| Reaguje na | kopák / basa / výšky / hlasitost / nic |
+| TVRDOST | 0 = plynule, 1 = ostře na úder |
+| OSCILACE | rychlost pohybu, kmitání, dýchání |
+| MNOŽSTVÍ | počet a hustota prvků |
+| TLOUŠŤKA | tloušťka a velikost prvků |
+| GLOW | záře jen kolem tohoto klipu (vedle „Glow celku“ v náhledu) |
+| STROBO | blikání po snímcích: **Pravidelně** = n snímků svítí / n tma (1 = každý druhý snímek), **Na úder** = svítí n snímků po každém úderu. 0 = vypnuto |
+
+GLOW a STROBO mají i videa. 3D scény mají navíc **3D KAMERA**: rotace kamery, výška kamery, vzdálenost, zorné pole, rotace objektu, úder kamery (přiblížení na úder).
+
+## Zvuk
+- **Zvuk PC** = co právě hraje zvuková karta tohoto počítače (Spotify, YouTube, přehrávač…). Bez kabelu a bez nastavování.
+- **Kabel** = vstup zvukovky (line-in z druhého počítače). **Wav** = skladba z knihovny. **Demo** = umělý rytmus 122 BPM.
+- Když zdroj nejde, napíše to panel Zvuk červeně.
+
+## 3D scény (experimentální)
+- Záložka **3D** v knihovně. Scény jsou soubory `.js` ve složce `VISUALS SOFTWARE\knihovna\3d` (Three.js). Přetáhneš je do mřížky jako tvary.
+- Základní 4: **Pole sloupců** (3D equalizer), **Mrak bodů** (body se přelévají mezi tvary), **Drátěná tělesa**, **Červi**.
+- Mají průhledné pozadí, takže se skládají s ostatními vrstvami. 3D je náročnější: počítej spíš se 2–3 3D vrstvami najednou (ověř testem výkonu).
 
 ## Knihovna a sady
 - Knihovna je složka **`VISUALS SOFTWARE\knihovna`** (tvary, videa, zvuk, sady). Aktualizace aplikace ji nepřepíše.
@@ -64,6 +91,7 @@ Každá vrstva má svou řadu kláves. Klávesa spustí klip v daném sloupci, d
 
 ## Obsah = soubory
 - `knihovna\tvary\*.glsl` — vizuály (hlavička nahoře, funkce `element`). Uložená změna se hned projeví; chybný shader obraz nesmaže.
+- `knihovna\3d\*.js` — 3D scény (hlavička nahoře, `vjScene({ create(THREE, ctx) … })`). Uložená změna se hned projeví.
 - `knihovna\videa\` — videa (WebM s průhledností / MP4), `knihovna\zvuk\` — skladby, `knihovna\sady\` — uložené sady.
 - `content\` v aplikaci je jen základní balíček: při startu se do knihovny doplní, co v ní ještě nebylo (tvé úpravy nepřepíše, smazané nevrací).
 - `test_alfa.webm` a `test_prostredi.mp4` jsou jen testovací.

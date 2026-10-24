@@ -70,6 +70,13 @@ export const FS_COPY = `#version 300 es
 precision highp float; uniform sampler2D uTex; uniform vec2 uRes; uniform float uMul; out vec4 o;
 void main(){ o = texture(uTex, gl_FragCoord.xy/uRes)*uMul; }`;
 
+/** Vrstva s vlastním GLOW: k vrstvě se přičte rozmazaná záře (jen světlo, alfa zůstává z vrstvy → žádné tmavé lemy). */
+export const FS_LAYER = `#version 300 es
+precision highp float; uniform sampler2D uTex, uGlow; uniform vec2 uRes; uniform float uMul, uGlowAmt; out vec4 o;
+void main(){ vec2 uv = gl_FragCoord.xy/uRes; vec4 e = texture(uTex, uv);
+  vec3 g = texture(uGlow, uv).rgb*uGlowAmt;
+  o = vec4(e.rgb + g*(1.0 - e.a*0.85), e.a)*uMul; }`;
+
 /** Video: straight alfa z dekodéru → premultiplied; „contain“ do poměru vrstvy. */
 export const FS_VIDEO = `#version 300 es
 precision highp float; uniform sampler2D uTex; uniform vec2 uRes; uniform vec2 uFit; out vec4 o;
