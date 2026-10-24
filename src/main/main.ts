@@ -11,6 +11,10 @@ import { APP_DIR, BASE_DIR, LIB, DIRS, ensureLibrary, listLibrary, importFiles, 
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
+// Windows: zakryté okno (výstup za pultem) Chromium „uspí“ — přestane kreslit, analyzovat zvuk a posílat údery
+// do pultu. Pak tvary v náhledu žijí, ale nereagují na hudbu. Uspávání zakrytých oken proto vypínáme.
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('enable-webgl-draft-extensions'); // EXT_disjoint_timer_query (GPU ms), kde je
 
@@ -129,6 +133,8 @@ function createWindows() {
     w.webContents.on('render-process-gone', (_e, d) => logLine(n, `proces okna spadl: ${d.reason} (kód ${d.exitCode})`));
   }
   output.on('closed', () => { output = null; });
+  // Minimalizovaný výstup by přestal kreslit a poslouchat zvuk → hned ho vrátit.
+  output.on('minimize', () => { logLine('výstup', 'byl minimalizován → vracím'); setTimeout(() => { if (output && !output.isDestroyed()) output.restore(); }, 100); });
   output.on('moved', () => { sendDisplayHz(); sendDisplays(); });
   output.on('enter-full-screen', () => { sendDisplayHz(); sendDisplays(); });
   output.on('leave-full-screen', sendDisplays);

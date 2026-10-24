@@ -257,3 +257,6 @@ input[type=range].slim:hover::-webkit-slider-thumb, input[type=range].slim:focus
 /* zámek: myš nic nemění (kromě zámku a černé), klávesy fungují */
 body.locked .gridwrap, body.locked .gridbar, body.locked .lib, body.locked .bottom .props, body.locked .bottom .audio, body.locked .preview .card-head, body.locked .hsplit, body.locked .vsplit { pointer-events: none; }
 body.locked .gridwrap { opacity: .92; }
+
+/* výstup neposílá snímky → červené upozornění v liště */
+body.outstale #fps { color: #fff !important; background: var(--red); padding: 1px 6px; border-radius: 4px; }

@@ -841,8 +841,15 @@ glowAmt.oninput = () => { state.glow.amount = +glowAmt.value; setRangeFill(glowA
 
 // ---------- statistiky z výstupu ----------
 let lastAudioStatus = '';
+let statsAt = performance.now();
+// Výstup přestal posílat snímky (zamrzl / spí) → varování v liště místo tichého „nic nereaguje“.
+setInterval(() => {
+  const stale = performance.now() - statsAt > 2500;
+  document.body.classList.toggle('outstale', stale);
+  if (stale) { $('fps').textContent = 'STOJÍ'; $('fps').title = 'Výstupní okno neposílá obraz ani zvuk (minimalizované, zamrzlé nebo se teprve spouští).'; }
+}, 1000);
 vj.onStats(s => {
-  stats = s;
+  stats = s; statsAt = performance.now(); $('fps').title = '';
   const ok = s.fps >= s.refreshHz * 0.97;
   $('fps').textContent = fmt(s.fps, 0);
   $('fps').style.color = ok ? '' : '#FF7B7B';
