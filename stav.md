@@ -25,7 +25,7 @@ Pořád se čeká na první měření na Legionu (brána Etapy 0).
 - **Neověřeno:** Zvuk PC při skutečně hrající hudbě (při testu nic nehrálo) · Legion (RTX 3060) · projektor za běhu.
 
 ## Čeká nás
-- [ ] **Krok 0:** na Legionu Git + Node.js LTS, nastavit Hybrid off / Vysoký výkon / 60 Hz, spustit `start.bat` (stáhne v0.4)
+- [ ] **Krok 0:** na Legionu Git + Node.js LTS, nastavit Hybrid off / Vysoký výkon / 60 Hz, spustit `start.bat` (stáhne v0.5)
 - [ ] Pustit hudbu v PC se zdrojem **Zvuk PC** → pásma se musí hýbat; kdyby se znovu stalo „nic nereaguje“, Claude si přečte `zpravy\chyby.txt`
 - [ ] **Etapa 0:** Test výkonu → Sestava brány → 1 min → zpráva `zpravy\test_….txt` (brána: 60 fps, 7 vrstev + video)
 - [ ] Etapa 0: další měření — mimo jiné **sloupec 3 (4× 3D scéna)** a GLOW na několika klipech zároveň
@@ -43,4 +43,6 @@ Pořád se čeká na první měření na Legionu (brána Etapy 0).
 MIDI + learn · klávesy pro spuštění sloupce · další 3D scény (cel shading, roj, hologram…) · HAP video · banky · cue list · víc modulátorů · efekty · Ableton Link / OSC · pojistka výkonu.
 
 ## Poznámka
-Claude teď vidí složku VISUALS SOFTWARE přes desktopovou aplikaci (když je chat propojený s počítačem), takže si zprávy z testů umí přečíst sám.
+- Claude vidí složku VISUALS SOFTWARE přes desktopovou aplikaci (chat propojený s počítačem): čte `zpravy\chyby.txt` i zprávy z testů sám.
+- Claude umí na PC sám spustit `start.bat` a proklikat pult (ovládání počítače). Testováno na stolním PC (RTX 4080 SUPER, 2 monitory: PA278CV + DELL jako „projektor“). Hrací stroj je dál Legion (RTX 3060).
+- `start.bat` před aktualizací vrací `package-lock.json` (jinak `git pull` selže).
