@@ -220,9 +220,9 @@ function renderOutBtn() {
 }
 vj.onDisplays(d => { const had = disp.displays.length; disp = d; renderOutBtn(); if (had && d.displays.length !== had) toast(d.displays.length > had ? 'Připojen nový monitor → výstup na něj.' : 'Monitor odpojen → výstup v okně na notebooku.'); });
 $('outBtn').dataset.menuAnchor = '1';
-$('outBtn').onclick = async e => {
+$('outBtn').onclick = async () => {
   disp = await vj.displays(); renderOutBtn();
-  const m = openMenu(e.currentTarget as HTMLElement, 360);
+  const m = openMenu($('outBtn'), 360); // pozor: e.currentTarget je po await prázdné (menu se dřív neotevřelo)
   m.append(el('div', { class: 'mtitle' }, 'Kam jde výstup'));
   for (const d of disp.displays) {
     const here = d.id === disp.placement.displayId;
@@ -383,7 +383,8 @@ function sizeGrid() {
   const z = getZoom(), wrap = $('gridWrap'), inner = $('gridZoom');
   inner.style.zoom = String(z);
   const minW = HEAD_W + nCols() * CELL_MIN + PLUS_W + (nCols() + 2) * GAP;
-  inner.style.width = Math.max((wrap.clientWidth - 32) / z, minW) + 'px';
+  // Šířka v „100 %“ pixelech; zoom pak zmenší celou mřížku (buňky i hlavičky), takže je vidět víc najednou.
+  inner.style.width = Math.max(wrap.clientWidth - 32, minW) + 'px';
 }
 addEventListener('resize', () => sizeGrid());
 

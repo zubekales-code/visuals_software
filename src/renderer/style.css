@@ -260,3 +260,4 @@ body.locked .gridwrap { opacity: .92; }
 
 /* výstup neposílá snímky → červené upozornění v liště */
 body.outstale #fps { color: #fff !important; background: var(--red); padding: 1px 6px; border-radius: 4px; }
+.cell.ready.selected { border-color: var(--yellow); box-shadow: inset 0 0 0 1px #E6E8EB; }
