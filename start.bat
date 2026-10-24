@@ -25,6 +25,8 @@ if exist "package.json" (
 )
 
 cd /d "%APP%"
+rem npm install obcas upravi package-lock.json - vratit ho, jinak by aktualizace neprosla
+git checkout -- package-lock.json >nul 2>nul
 echo Stahuji novou verzi...
 git pull --ff-only || goto :err
 echo Instaluji knihovny (poprve to trva i par minut)...
