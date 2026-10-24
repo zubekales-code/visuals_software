@@ -12,7 +12,13 @@ preload      ── src/main/preload.ts   jediné API oken (window.vj, typ VjApi
 ```
 Stav (`AppState`, src/shared/types.ts): 8 vrstev × 10 klipů + `colNames` (názvy sloupců). Klip = `{ content, params, name? }`, params přepisují výchozí hodnoty z hlavičky.
 Vrstva: `name?`, `on`, `opacity`, `scale`, `blend` (normal/add/screen), `active` = hrající sloupec. Kompozitor kreslí `activeClip(vrstva)`.
-Sloupec = `launchColumn()` (v každé vrstvě aktivní tento sloupec, jinak −1), stav hlavičky `columnStatus()` (odvozený, nic se neukládá).
+Sloupce: `state.column` = jediný aktivní sloupec; hrát smí jen `l.active === state.column` (`normalizePlay()` to vynutí).
+Logika v `types.ts` (testy `test/v05.test.ts`): `clickColumnLogic`, `clickClipLogic` (jiný sloupec = `clip.ready`), `startColumn`
+(připravené, jinak celý sloupec), `addColumn/deleteColumn/addLayer/deleteLayer`, `sanitizeGrid` (načtení autosave / sady).
+Počet vrstev (1–16) a sloupců (1–30) je proměnný; kompozitor si sloty přidává / uvolňuje, GPU timer má MAX_LAYERS+1 slotů.
+Layout pultu (`ui/layout.ts`): velikosti panelů + zmenšení mřížky (CSS zoom na #gridZoom), pojmenované layouty v localStorage.
+Přejmenování (`inlineEdit`): pole mimo dokument se nepočítá jako rozepsané — dřív dvojklik zasekl překreslování mřížky.
+Záznam chyb: okna posílají `vj.logError`, main zapisuje `zpravy/chyby.txt` (+ zamrzlé / spadlé okno, změny stavu zvuku).
 Params klipu: drive, hard (TVRDOST), speed (OSCILACE), density (MNOŽSTVÍ), size (TLOUŠŤKA), colA/colB, glow, strobe + strobeMode, cam (3D), custom.
 Klávesy klipů: `src/renderer/keys.ts`. Náhledy klipů (1 snímek): `src/renderer/thumbs.ts`. Vzhled pultu = `INTERFACE KONCEPT/interface_koncept.html`.
 Pult: `control.ts` (lišta, mřížka, knihovna, vlastnosti, zvuk), `ui/dom.ts` (prvky, menu, zprávy), `ui/layout.ts` (táhla, velikosti v localStorage).

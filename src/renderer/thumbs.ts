@@ -18,6 +18,12 @@ export class Thumbs {
   private pending = new Map<string, Promise<string>>();
   private progs = new Map<string, { src: string; prog: Prog; header: ReturnType<typeof parseShaderHeader>['header'] }>();
   private host: SceneHost | null = null;
+  private sceneQueue: Promise<unknown> = Promise.resolve();
+  /** Mezipaměť náhledů má strop (tažení posuvníkem dělá stovky variant). */
+  private remember(key: string, url: string) {
+    this.cache.set(key, url);
+    while (this.cache.size > 400) this.cache.delete(this.cache.keys().next().value as string);
+  }
   private copyProg: Prog | null = null;
 
   constructor(private onRestored: () => void) {
@@ -38,14 +44,21 @@ export class Thumbs {
   get(item: ContentItem | undefined, params: ClipParams, onReady: () => void): string | null {
     if (!item) return null;
     // GLOW a STROBO náhled nemění (jsou to efekty nad hotovým obrazem) → nepřekreslovat kvůli nim.
+    // 3D scéna je drahá (postaví se celá) → náhled jen podle barev, ne podle každého pohybu posuvníkem.
     const { glow: _g, strobe: _s, strobeMode: _m, ...look } = params;
-    const key = item.id + '|' + (item.source?.length ?? 0) + '|' + JSON.stringify(look);
+    const lk = item.kind === 'scene' ? { colA: params.colA, colB: params.colB } : look;
+    const key = item.id + '|' + (item.source?.length ?? 0) + '|' + JSON.stringify(lk);
     const hit = this.cache.get(key);
-    if (hit) return hit;
+    // '' = náhled se nepovedl (rozbitý vizuál) — nezkoušet ho znovu pořád dokola (dřív to vytěžovalo pult)
+    if (hit !== undefined) { this.cache.delete(key); this.cache.set(key, hit); return hit || null; } // naposledy použité na konec (LRU)
     if (!this.pending.has(key)) {
       if ((item.kind === 'shader' || item.kind === 'scene') && !this.g) return null; // grafika se obnovuje
-      const p = (item.kind === 'video' ? this.video(item) : item.kind === 'scene' ? this.scene(item, params) : new Promise<string>(res => res(this.shader(item, params))))
-        .then(url => { this.cache.set(key, url); this.pending.delete(key); onReady(); return url; })
+      // 3D náhledy jeden po druhém s pauzou mezi nimi — pult mezitím reaguje (dřív se při startu na chvíli zasekl).
+      const job: Promise<string> = item.kind === 'scene' ? this.sceneQueue.then(() => new Promise(r => setTimeout(r, 40))).then(() => this.scene(item, { colA: params.colA, colB: params.colB }))
+        : item.kind === 'video' ? this.video(item) : new Promise<string>(res => res(this.shader(item, params)));
+      if (item.kind === 'scene') this.sceneQueue = job.catch(() => '');
+      const p = job
+        .then(url => { this.remember(key, url); this.pending.delete(key); onReady(); return url; })
         .catch(() => { this.pending.delete(key); if (this.g) this.cache.set(key, ''); return ''; });
       this.pending.set(key, p);
     }

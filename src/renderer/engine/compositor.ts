@@ -3,7 +3,7 @@
 // Pravidla výkonu: vypnutá vrstva se nekreslí, buffery se alokují jen při změně, ne každý snímek.
 // Obsah vrstvy: tvar (.glsl), video, nebo 3D scéna (.js, Three.js na stejném kontextu — scene-host.ts).
 import type { AppState, AudioFrame, Cam3D, ClipParams, ContentItem, ShaderHeader, StrobeMode } from '../../shared/types';
-import { LAYER_COUNT, CAM_DEFAULTS, activeClip, strobeGate } from '../../shared/types';
+import { MAX_LAYERS, CAM_DEFAULTS, activeClip, strobeGate } from '../../shared/types';
 import { parseShaderHeader, hexToRgb } from '../../shared/shader-header';
 import { Gl, GlError, type Prog, type Target, type Uniform } from './gl';
 import { buildElementSource, FS_COPY, FS_LAYER, FS_VIDEO, FS_DOWN, FS_BLUR, FS_FINAL } from './glsl';
@@ -105,7 +105,7 @@ export class Compositor {
     const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, antialias: false, alpha: false, desynchronized: false, powerPreference: 'high-performance' });
     if (!gl) throw new GlError('WebGL2 není k dispozici.');
     this.g = new Gl(gl);
-    this.timer = new GpuTimer(gl, LAYER_COUNT + 1);
+    this.timer = new GpuTimer(gl, MAX_LAYERS + 1); // poslední = skládání + glow
     this.copy = this.g.program(FS_COPY, 'copy');
     this.layerProg = this.g.program(FS_LAYER, 'layer');
     this.videoProg = this.g.program(FS_VIDEO, 'video');
@@ -113,7 +113,6 @@ export class Compositor {
     this.blur = this.g.program(FS_BLUR, 'blur');
     this.final = this.g.program(FS_FINAL, 'final');
     this.host = new SceneHost(gl, canvas);
-    for (let i = 0; i < LAYER_COUNT; i++) this.layers.push(this.newSlot());
   }
 
   get gpuName(): string {
@@ -243,7 +242,13 @@ export class Compositor {
     gl.disable(gl.BLEND);
     let anyVisible = false;
 
-    for (let i = 0; i < LAYER_COUNT; i++) {
+    // Počet vrstev se mění (přidat / smazat): sloty přibydou, přebytečné se uvolní.
+    while (this.layers.length < s.layers.length) this.layers.push(this.newSlot());
+    for (let i = s.layers.length; i < this.layers.length; i++) {
+      const L = this.layers[i];
+      if (L.content) { this.assign(L, ''); this.g.deleteTarget(L.a); this.g.deleteTarget(L.b); L.a = L.b = null; L.needClear = true; this.timer.forget(i); }
+    }
+    for (let i = 0; i < s.layers.length; i++) {
       const L = this.layers[i], ls = s.layers[i];
       if (!ls) continue;
       const clip = activeClip(ls);
@@ -301,10 +306,10 @@ export class Compositor {
     }
 
     // Skládání vrstev (pořadí = číslo vrstvy, 1 je dole).
-    T.begin(LAYER_COUNT);
+    T.begin(MAX_LAYERS);
     g.clear(this.accum);
     if (anyVisible) {
-      for (let i = 0; i < LAYER_COUNT; i++) {
+      for (let i = 0; i < s.layers.length; i++) {
         const L = this.layers[i], ls = s.layers[i];
         if (!L.a || L.needClear || !ls) continue;
         const mul = L.rt.fade * ls.opacity;
@@ -369,6 +374,7 @@ export class Compositor {
   }
 
   layerGpuMs(i: number) { return this.timer.value(i); }
+  compositeGpuMs() { return this.timer.value(MAX_LAYERS); }
 
   dispose() {
     for (const L of this.layers) { L.video?.dispose(); this.host.release(L.scene); L.scene = null; this.g.deleteTarget(L.a); this.g.deleteTarget(L.b); }

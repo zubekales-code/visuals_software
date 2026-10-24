@@ -37,6 +37,7 @@ const api: VjApi = {
   onDisplayHz: on('display-hz'),
   captureSystemAudio: () => ipcRenderer.invoke('audio:system'),
   isSmoke: () => ipcRenderer.invoke('smoke'),
+  logError: t => ipcRenderer.send('log:error', t),
   smokeDone: (ok, info) => ipcRenderer.send('smoke:done', ok, info),
 };
 

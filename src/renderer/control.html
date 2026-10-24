@@ -11,7 +11,7 @@
 <header class="top">
   <button class="brand" id="brand" title="Sady (estetiky): uložit, načíst, nová — Ctrl+S uloží">
     <div class="logo">VJ</div>
-    <div class="brand-txt"><span class="proj" id="sadaName">Pracovní sada</span><span class="sub" id="sadaSub">uloženo automaticky · v0.4</span></div>
+    <div class="brand-txt"><span class="proj" id="sadaName">Pracovní sada</span><span class="sub" id="sadaSub">uloženo automaticky · v0.5</span></div>
   </button>
 
   <div class="seg tempo">
@@ -60,9 +60,14 @@
   <div class="vsplit" id="splitLib" title="Táhni = šířka knihovny · dvojklik = výchozí"></div>
   <button class="libshow" id="libShow" title="Ukázat knihovnu" hidden>›</button>
 
-  <section class="gridwrap" aria-label="Mřížka klipů">
-    <div class="cliprow head" id="colHead"></div>
-    <div id="rows"></div>
+  <section class="gridcol" aria-label="Mřížka klipů">
+    <div class="gridbar" id="gridBar"></div>
+    <div class="gridwrap" id="gridWrap">
+      <div class="gridzoom" id="gridZoom">
+        <div class="cliprow head" id="colHead"></div>
+        <div id="rows"></div>
+      </div>
+    </div>
   </section>
 </div>
 
@@ -101,6 +106,7 @@
         <input type="range" class="slim" id="seek" min="0" max="1" step="0.001" value="0" title="Pozice ve skladbě">
         <span class="val mono" id="time">0:00 / 0:00</span></div>
     </div>
+    <div class="listen" id="listen" title="Co se právě opravdu analyzuje">Poslouchám: —</div>
     <div id="bands"></div>
     <span class="muted sm">tečka = úder v pásmu</span>
     <div class="prow3"><span class="plabel">Citlivost</span><input type="range" class="slim" id="sens" min="0.3" max="2" step="0.05"><span class="val mono" id="sensVal"></span></div>

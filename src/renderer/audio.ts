@@ -53,6 +53,9 @@ export class AudioEngine {
   private cur = { source: '', wavUrl: '', deviceId: '' };
   private gen = 0;            // každé přepnutí zdroje = nové číslo (pomalé zachycení nesmí přepsat novější volbu)
   private live = false;       // analyzuje se skutečný zvuk ze streamu (kabel, zvuk PC)
+  private connecting = false; // právě se připojuje kabel / zvuk PC
+  private retryAt = 0; private retryDelay = 3; // znovupřipojení po výpadku (rostoucí pauza)
+  private resumeAt = 0;
   status = 'demo';
   /** Zachytí zvuk tohoto PC. Dosadí výstupní okno (potřebuje pomoc hlavního procesu). */
   captureSystem: (() => Promise<MediaStream>) | null = null;
@@ -81,6 +84,7 @@ export class AudioEngine {
         this.src = node; this.status = 'wav';
       } else if (s.source === 'input') {
         const ctx = this.ensureCtx();
+        this.connecting = true;
         try {
           // Žádné „vylepšování“ zvuku: potlačení ozvěny/šumu a automatický zisk by zkreslily údery.
           this.stream = await navigator.mediaDevices.getUserMedia({
@@ -89,11 +93,14 @@ export class AudioEngine {
           if (gen !== this.gen) { this.stopStream(); return; }
           const node = ctx.createMediaStreamSource(this.stream);
           node.connect(this.analyser!); // do reproduktorů neposíláme (zpětná vazba)
-          this.src = node; this.status = 'vstup'; this.live = true;
+          this.src = node; this.status = 'vstup'; this.live = true; this.retryDelay = 3;
+          this.stream.getAudioTracks()[0]?.addEventListener('ended', () => { if (gen === this.gen) { this.live = false; this.status = 'vstup nedostupný: kabel / zvukovka se odpojila'; } });
         } catch (e) { this.status = 'vstup nedostupný: ' + (e as Error).message; }
+        finally { if (gen === this.gen) this.connecting = false; }
       } else if (s.source === 'system') {
         const ctx = this.ensureCtx();
         this.status = 'zvuk PC: připojuji…';
+        this.connecting = true;
         try {
           if (!this.captureSystem) throw new Error('není k dispozici');
           const stream = await this.captureSystem();
@@ -104,9 +111,10 @@ export class AudioEngine {
           if (!stream.getAudioTracks().length) throw new Error('Windows neposlal žádný zvuk (funguje jen na Windows)');
           const node = ctx.createMediaStreamSource(stream);
           node.connect(this.analyser!); // do reproduktorů ne: hraje to už počítač sám
-          this.src = node; this.status = 'zvuk PC'; this.live = true;
+          this.src = node; this.status = 'zvuk PC'; this.live = true; this.retryDelay = 3;
           stream.getAudioTracks()[0].addEventListener('ended', () => { if (gen === this.gen) { this.live = false; this.status = 'zvuk PC nedostupný: zachytávání skončilo — přepni zdroj znovu'; } });
         } catch (e) { if (gen === this.gen) { this.stopStream(); this.status = 'zvuk PC nedostupný: ' + ((e as Error).message || String(e)); } }
+        finally { if (gen === this.gen) this.connecting = false; }
       } else {
         this.status = 'demo';
       }
@@ -133,6 +141,31 @@ export class AudioEngine {
     let s = 0, n = 0;
     for (let i = Math.max(1, Math.floor(lo / binHz)); i <= Math.min(this.freq.length - 1, Math.ceil(hi / binHz)); i++) { s += Math.pow(10, this.freq[i] / 20); n++; }
     return n ? s / n : 0;
+  }
+
+  /** Hlídač zdroje (volá se ze smyčky výstupu): kabel / zvuk PC vypadl → znovu připojit, zvuk „usnul“ → probudit. */
+  watchdog(s: AudioSettings, now: number) {
+    if (this.ctx && this.ctx.state === 'suspended' && now > this.resumeAt) { this.resumeAt = now + 1; void this.ctx.resume().catch(() => {}); }
+    if ((s.source === 'system' || s.source === 'input') && !this.live && !this.connecting && now > this.retryAt) {
+      this.retryAt = now + this.retryDelay; this.retryDelay = Math.min(30, this.retryDelay * 2);
+      this.cur.source = ''; // vynutit nové připojení
+      void this.apply(s, '');
+    }
+  }
+
+  /** Poslouchá se opravdu zvolený zdroj? (Jinak běží náhradní demo rytmus.) */
+  listenOk(src: AudioSettings['source']) {
+    if (src === 'demo') return true;
+    if (src === 'wav') return this.status === 'wav' && !!this.el && !this.el.paused;
+    return this.live;
+  }
+  /** Co se teď opravdu analyzuje — pro panel Zvuk. */
+  listenLabel(src: AudioSettings['source']) {
+    if (src === 'demo') return 'demo rytmus 122 BPM';
+    if (src === 'wav') return this.listenOk(src) ? 'skladba (wav) ▶' : this.el ? 'demo rytmus — skladba je na pauze (▶ nebo mezerník)' : 'demo rytmus — vyber skladbu';
+    const name = src === 'system' ? 'zvuk tohoto PC' : 'kabel';
+    if (this.live) return name;
+    return this.connecting ? `demo rytmus — připojuji ${name}…` : `demo rytmus — ${name} nejde, zkouším znovu`;
   }
 
   /** Spočítá pásma pro tento snímek. */

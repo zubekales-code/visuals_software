@@ -1,7 +1,7 @@
 // Hlavní proces: otevře pult a výstupní okno, spravuje knihovnu (VISUALS SOFTWARE\knihovna),
 // přeposílá zprávy mezi okny, hlídá monitory a ukládá zprávy z testů do složky zpravy/.
 import { app, BrowserWindow, ipcMain, dialog, screen, session, Menu, shell, desktopCapturer } from 'electron';
-import { mkdirSync, writeFileSync, watch, existsSync, copyFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, watch, existsSync, copyFileSync, readFileSync, appendFileSync, statSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { AppState, DisplayInfo, DisplaysInfo, OutputPlacement, ReportPayload } from '../shared/types';
@@ -18,6 +18,23 @@ const SMOKE = process.argv.includes('--smoke');
 if (SMOKE) app.commandLine.appendSwitch('enable-unsafe-swiftshader'); // test bez skutečné grafiky
 
 const REPORTS = process.env.VJ_ZPRAVY || join(BASE_DIR, 'zpravy');
+
+// ---------- záznam chyb: VISUALS SOFTWARE\zpravy\chyby.txt ----------
+// Aby šlo zpětně zjistit, co se stalo (zamrzlý pult, spadlý výstup, chyba v kódu). Stejná zpráva max. 1× za 10 s.
+const LOG = join(REPORTS, 'chyby.txt');
+const lastLogged = new Map<string, number>();
+function logLine(who: string, text: string) {
+  const key = who + text, now = Date.now();
+  if ((lastLogged.get(key) ?? 0) > now - 10000) return;
+  lastLogged.set(key, now);
+  try {
+    mkdirSync(REPORTS, { recursive: true });
+    if (existsSync(LOG) && statSync(LOG).size > 2_000_000) renameSync(LOG, LOG.replace('.txt', '_stare.txt'));
+    const t = new Date().toLocaleString('cs-CZ');
+    appendFileSync(LOG, `[${t}] ${who}: ${String(text).slice(0, 2000)}\r\n`, 'utf8');
+  } catch { /* zápis se nepovedl — nevadí */ }
+}
+process.on('uncaughtException', e => logLine('hlavní proces', e.stack || e.message));
 
 let control: BrowserWindow | null = null;
 let output: BrowserWindow | null = null;
@@ -98,12 +115,20 @@ function createWindows() {
   });
 
   control.on('closed', () => { control = null; if (output && !output.isDestroyed()) output.close(); });
+  // Zamrzlé nebo spadlé okno → do záznamu (pult zamrzne = nejde nic přesouvat, výstup jede dál).
+  for (const [w, n] of [[control, 'pult'], [output, 'výstup']] as const) {
+    w.on('unresponsive', () => logLine(n, 'okno přestalo reagovat (zamrzlo)'));
+    w.on('responsive', () => logLine(n, 'okno zase reaguje'));
+    w.webContents.on('render-process-gone', (_e, d) => logLine(n, `proces okna spadl: ${d.reason} (kód ${d.exitCode})`));
+  }
   output.on('closed', () => { output = null; });
   output.on('moved', () => { sendDisplayHz(); sendDisplays(); });
   output.on('enter-full-screen', () => { sendDisplayHz(); sendDisplays(); });
   output.on('leave-full-screen', sendDisplays);
   // Spadlý výstup se sám znovu načte (stav mu pult pošle znovu).
   output.webContents.on('render-process-gone', () => { setTimeout(() => output?.webContents.reload(), 500); });
+  // Spadlý pult se taky sám znovu načte (stav má v autosave).
+  control.webContents.on('render-process-gone', () => { setTimeout(() => control?.webContents.reload(), 500); });
 }
 
 app.whenReady().then(() => {
@@ -161,6 +186,8 @@ app.whenReady().then(() => {
   ipcMain.handle('displays', () => displaysInfo());
   ipcMain.on('output:place', (_e, id: number, fs: boolean) => placeOutput(id, fs));
   ipcMain.handle('smoke', () => SMOKE);
+  ipcMain.on('log:error', (e, t: string) => logLine(e.sender === control?.webContents ? 'pult' : 'výstup', t));
+  logLine('start', `aplikace v${app.getVersion()} spuštěna`);
   // Zachycení zvuku PC musí vypadat jako akce uživatele (jinak ho Chromium odmítne) → spustí se s userGesture.
   ipcMain.handle('audio:system', async () => {
     if (!output || output.isDestroyed()) return 'výstupní okno neběží';
@@ -209,19 +236,40 @@ app.whenReady().then(() => {
       sp.dispatchEvent(new PointerEvent('pointermove', { clientX: r.x + 5, clientY: r.y - 100, pointerId: 1, bubbles: true }));
       sp.dispatchEvent(new PointerEvent('pointerup', { clientX: r.x + 5, clientY: r.y - 100, pointerId: 1, bubbles: true }));
       out.push('bottom ' + Math.round(h0) + '>' + Math.round(document.getElementById('bottom').getBoundingClientRect().height));
-      // v0.4: klik na název = jen vlastnosti (klip hraje dál)
+      const wait = ms => new Promise(r => setTimeout(r, ms));
       const nm = (row, col) => document.querySelectorAll('#rows .cliprow')[row].querySelectorAll('.cname')[col];
-      const act0 = st().layers[7].active; nm(0, 0).click();
-      out.push('nameClick sel=' + st().selected.layer + '/' + st().selected.col + ' active ' + act0 + '>' + st().layers[7].active);
-      // přejmenování vrstvy, sloupce a klipu (dvojklik → napsat → Enter)
-      const typeIn = (el, txt) => { el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); const i = document.querySelector('input.inedit'); if (!i) return 'žádné pole'; i.value = txt; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 'ok'; };
-      typeIn(document.querySelectorAll('#rows .lhead .name')[0], 'Horní tvary');
-      typeIn(document.querySelectorAll('#colHead .colbtn')[2], 'Intro 3D');
-      typeIn(nm(1, 0), 'Čáry hrubé');
+      const menuClick = txt => { const b = Array.from(document.querySelectorAll('#menu .mitem')).find(x => x.textContent.startsWith(txt)); if (b) b.click(); return !!b; };
+      const typeIn = txt => { const i = document.querySelector('input.inedit'); if (!i) return false; i.value = txt; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; };
+      const ctx = el => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      // levý klik na název (i opakovaně) = jen vlastnosti, klip hraje dál
+      const act0 = st().layers[7].active; nm(0, 0).click(); nm(0, 0).click(); nm(0, 0).click();
+      nm(0, 0).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      out.push('nameClick sel=' + st().selected.layer + '/' + st().selected.col + ' active ' + act0 + '>' + st().layers[7].active + ' edit=' + !!document.querySelector('input.inedit'));
+      // pravý klik = přejmenovat klip; vrstva a sloupec přes menu
+      ctx(nm(1, 0)); typeIn('Čáry hrubé');
+      ctx(document.querySelectorAll('#rows .lhead')[0]); menuClick('Přejmenovat'); typeIn('Horní tvary');
+      ctx(document.querySelectorAll('#colHead .colbtn')[2]); menuClick('Přejmenovat'); typeIn('Intro 3D');
       out.push('rename layer=' + st().layers[7].name + ' col=' + st().colNames[2] + ' clip=' + (st().layers[6].clips[0] && st().layers[6].clips[0].name));
-      // hlavička sloupce: hraje jen sloupec 3 (3D scény)
+      // jen jeden sloupec: přepnutí na 3, klik na klip v jiném sloupci = jen připravit
       document.querySelectorAll('#colHead .colbtn')[2].click();
-      out.push('column3 active=' + st().layers.map(l => l.active).join(',') + ' head=' + document.querySelectorAll('#colHead .colbtn')[2].className);
+      const a3 = st().layers.map(l => l.active).join(',');
+      document.querySelectorAll('#rows .cliprow')[0].querySelectorAll('.cell')[0].click();
+      const one = st().layers.every(l => l.active === -1 || l.active === st().column);
+      out.push('column3 active=' + a3 + ' ready=' + st().layers[7].clips[0].ready + ' onlyOne=' + one + ' readyFrame=' + !!document.querySelector('.cell.ready') + ' head=' + document.querySelectorAll('#colHead .colbtn')[2].className);
+      // přidat / smazat sloupec a vrstvu
+      document.querySelector('#colHead .colbtn.plus').click(); const c1 = st().colNames.length;
+      ctx(document.querySelectorAll('#colHead .colbtn')[c1 - 1]); menuClick('Smazat'); menuClick('Opravdu'); const c2 = st().colNames.length;
+      document.querySelector('.addlayer').click(); const l1 = st().layers.length;
+      ctx(document.querySelectorAll('#rows .lhead')[0]); menuClick('Smazat'); menuClick('Opravdu'); const l2 = st().layers.length;
+      out.push('cols ' + c2 + '>' + c1 + '>' + c2 + ' layers 8>' + l1 + '>' + l2 + ' rows=' + document.querySelectorAll('#rows .cliprow').length);
+      // zmenšení mřížky + layout uložit / výchozí
+      const zb = z => Array.from(document.querySelectorAll('#gridBar .segbtns button')).find(b => b.textContent.startsWith(z));
+      zb('50').click(); const z50 = getComputedStyle(document.getElementById('gridZoom')).zoom;
+      document.getElementById('layoutBtn').click(); await wait(50);
+      const li = document.querySelector('#menu input'); li.value = 'Test'; li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      const lname = document.getElementById('layoutBtn').textContent;
+      document.getElementById('layoutBtn').click(); await wait(50); menuClick('Výchozí');
+      out.push('zoom50=' + z50 + ' after=' + getComputedStyle(document.getElementById('gridZoom')).zoom + ' layout=' + lname + ' > ' + document.getElementById('layoutBtn').textContent);
       // GLOW a STROBO na 3D vrstvách (výstup je pak vykreslí v testu výkonu)
       window.__vjSet(s => { s.layers[2].clips[2].params = { glow: 0.8 }; s.layers[3].clips[2].params = { strobe: 1 }; s.layers[4].clips[2].params = { strobe: 2, strobeMode: 'hit', glow: 0.5 }; s.selected = { layer: 4, col: 2 }; s.preview = true; });
       out.push('props=' + Array.from(document.querySelectorAll('#props .plabel')).map(e => e.textContent).filter(Boolean).join('/'));

@@ -1,4 +1,4 @@
-# VJ software — v0.4 (Etapa 0: test výkonu + první funkce pultu)
+# VJ software — v0.5 (Etapa 0: test výkonu + funkce pultu)
 
 Vlastní VJ aplikace pro Windows: průhledné vrstvy, vizuály reagující na zvuk, výstup na projektor.
 Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 vrstev s videem na 60 fps bez trhání.
@@ -25,12 +25,16 @@ Pak zkus i **Zátěž: všech 8**, rozlišení 1920×1080 i 2560×1440, glow zap
 
 ## Pult
 Vypadá podle schváleného konceptu (`INTERFACE KONCEPT`): nahoře lišta, vlevo **knihovna**, uprostřed mřížka **vrstvy × 10 sloupců**, dole **náhled výstupu | vlastnosti klipu | zvuk**.
-- **Klip** = vizuál + jeho vlastní hodnoty. **Klik na klip spustí, druhý klik zastaví** (stejně jako klávesa). Svítící rámeček = hraje.
-- **Název klipu** je nad klipem. **Klik na název** jen otevře nastavení klipu dole (klip hraje dál). **Dvojklik na název** = přejmenovat (např. „Škrábance hrubé“).
-- **Sloupce:** nahoře nad mřížkou jsou hlavičky sloupců 1–10. **Klik na hlavičku** = hraje jen tento sloupec (vše z jiných sloupců se zastaví, vrstvy bez klipu v tomto sloupci ztichnou). Druhý klik zastaví vše. **Dvojklik** = přejmenovat sloupec (např. „Intro“). Plně podbarvená hlavička = hraje celý sloupec, obrys = hraje z něj jen něco.
-- **Vrstvy:** dvojklik na název vrstvy = přejmenovat. Názvy vrstev, sloupců i klipů se ukládají do sady.
-- **Přetahování:** klip táhni do jiné buňky i jiné vrstvy (na obsazenou buňku se prohodí), **s Ctrl se zkopíruje**. Z knihovny táhni vizuál do buňky.
-- **Pravý klik na klip:** změnit vizuál, duplikovat jako variantu, ukázat soubor, odebrat.
+- **Vždy je aktivní právě jeden sloupec** (hlavička svítí). Hrát můžou jen jeho klipy.
+  - **Klik na hlavičku jiného sloupce** = přepnout na něj. Pustí se jeho **připravené** klipy; když v něm nic připravené není, pustí se celý sloupec.
+  - **Klik na hlavičku aktivního sloupce** = zastavit vše (a znovu = pustit).
+- **Klik na klip v aktivním sloupci** ho zapne / vypne (stejně jako klávesa). Svítící rámeček = hraje.
+- **Klik na klip v jiném sloupci** ho jen **připraví** (žlutý rámeček „PŘIPRAVEN“, číslo u hlavičky = kolik je připraveno). Druhý klik připravení zruší.
+- **Název klipu** je nad klipem. **Levý klik** (kolikrát chceš) jen otevře nastavení klipu dole. **Pravý klik na název** = přejmenovat.
+- **Pravý klik na hlavičku sloupce / na vrstvu:** přejmenovat, přidat vlevo/vpravo (nad/pod), smazat (ptá se „Opravdu?“).
+- **+ vrstva / + sloupec** v liště nad mřížkou (nejvýš 16 vrstev, 30 sloupců). Co se nevejde, ukáže posuvník. Klávesy mají jen prvních 8 vrstev × 10 sloupců.
+- **Mřížka 100 % / 75 % / 50 %** = zmenšení, ať vidíš celou mřížku.
+- **Layout** (vpravo v liště) = rozložení pultu: velikosti panelů, zmenšení mřížky, knihovna. Ulož pod jménem, přepínej, **Výchozí rozložení** vrátí původní stav. Co hraje a kolik je vrstev / sloupců, patří do sady.
 - **Hlavička vrstvy:** oko zapne/vypne vrstvu, posuvník = průhlednost, Normál/Add/Screen = prolínání, 1/½/¼ = rozlišení vrstvy (menší = levnější).
 - **Velikosti částí:** táhni za proužky mezi knihovnou a mřížkou, nad spodní částí a mezi spodními panely. Dvojklik = výchozí. Knihovnu schováš šipkou ‹.
 - **Výstup** (tlačítko v liště): na který monitor, celá obrazovka nebo okno, rozlišení obrazu. Připojený projektor = výstup na něj skočí sám, odpojený = výstup do okna.
@@ -54,7 +58,8 @@ GLOW a STROBO mají i videa. 3D scény mají navíc **3D KAMERA**: rotace kamery
 ## Zvuk
 - **Zvuk PC** = co právě hraje zvuková karta tohoto počítače (Spotify, YouTube, přehrávač…). Bez kabelu a bez nastavování.
 - **Kabel** = vstup zvukovky (line-in z druhého počítače). **Wav** = skladba z knihovny. **Demo** = umělý rytmus 122 BPM.
-- Když zdroj nejde, napíše to panel Zvuk červeně.
+- Řádek **„Poslouchám:“** ukazuje, co se opravdu analyzuje. Zelený = zvolený zdroj, oranžový = náhradní demo rytmus (např. skladba je na pauze nebo se Zvuk PC teprve připojuje). Vypadlý kabel / Zvuk PC se sám znovu připojí.
+- Chyby a zamrznutí se zapisují do `VISUALS SOFTWARE\zpravy\chyby.txt` (Claude si je umí přečíst).
 
 ## 3D scény (experimentální)
 - Záložka **3D** v knihovně. Scény jsou soubory `.js` ve složce `VISUALS SOFTWARE\knihovna\3d` (Three.js). Přetáhneš je do mřížky jako tvary.

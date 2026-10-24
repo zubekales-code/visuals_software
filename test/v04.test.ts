@@ -9,22 +9,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { parseShaderHeader } from '../src/shared/shader-header';
-import { defaultState, launchColumn, stopAll, columnStatus, strobeGate, CLIP_COLS } from '../src/shared/types';
-
-test('sloupec: hraje jen označený sloupec, prázdné buňky ztichnou', () => {
-  const s = defaultState();
-  launchColumn(s.layers, 2);
-  for (const l of s.layers) assert.equal(l.active, l.clips[2] ? 2 : -1);
-  assert.equal(columnStatus(s.layers, 2), 'full');
-  assert.equal(columnStatus(s.layers, 0), '');
-  s.layers[7].active = 0;                       // ručně pustím klip z jiného sloupce
-  assert.equal(columnStatus(s.layers, 2), 'part');
-  assert.equal(columnStatus(s.layers, 0), 'part');
-  stopAll(s.layers);
-  assert.ok(s.layers.every(l => l.active === -1));
-  assert.equal(columnStatus(s.layers, 9), '', 'prázdný sloupec nikdy nesvítí');
-  assert.equal(s.colNames.length, CLIP_COLS);
-});
+import { strobeGate } from '../src/shared/types';
 
 test('STROBO: n snímků svítí / n tma; na úder n snímků po úderu; 0 = vypnuto', () => {
   const on = (n: number, mode: 'frames' | 'hit', fsh = 0) => Array.from({ length: 8 }, (_, f) => strobeGate(f, n, mode, fsh + f) ? 1 : 0).join('');

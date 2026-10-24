@@ -64,18 +64,35 @@ select { background: var(--ctl); border: 1px solid var(--line2); border-radius: 
 /* ---------- mřížka klipů ---------- */
 :root { --libW: 250px; --bottomH: 38vh; }
 .work { flex: 1 1 auto; min-height: 120px; display: flex; position: relative; }
-.gridwrap { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; padding: 12px 16px 8px; display: flex; flex-direction: column; gap: 6px; }
-.cliprow { display: grid; grid-template-columns: 220px repeat(10, minmax(0, 1fr)); gap: 6px; min-width: 1100px; align-items: stretch; }
-.cliprow.head { font-size: 11px; color: var(--muted); position: sticky; top: -12px; background: var(--bg); padding-top: 4px; z-index: 1; }
+.gridcol { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.gridbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 16px 0; flex-wrap: wrap; }
+.gridbar .segbtns button { padding: 3px 9px; font-size: 11px; }
+.gridwrap { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; padding: 8px 16px 8px; }
+/* zmenšení mřížky = CSS zoom; šířku nastavuje pult (sloupce mají minimální šířku, zbytek = posuvník) */
+.gridzoom { display: flex; flex-direction: column; gap: 6px; }
+.cliprow { display: grid; gap: 6px; align-items: stretch; }
+.cliprow.head { font-size: 11px; color: var(--muted); position: sticky; top: -8px; background: var(--bg); padding-top: 4px; z-index: 1; }
+/* pořádný posuvník mřížky (vodorovný i svislý) */
+.gridwrap::-webkit-scrollbar { width: 14px; height: 14px; }
+.gridwrap::-webkit-scrollbar-track { background: var(--bar); border-radius: 7px; }
+.gridwrap::-webkit-scrollbar-thumb { background: #3A3F47; border-radius: 7px; border: 3px solid var(--bar); }
+.gridwrap::-webkit-scrollbar-thumb:hover { background: #4A505A; }
+.gridwrap::-webkit-scrollbar-corner { background: transparent; }
+.addlayer { align-self: flex-start; width: 220px; background: transparent; border: 1px dashed var(--line2); border-radius: 8px; color: var(--muted); padding: 5px; font-size: 11px; }
+.addlayer:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: .4; cursor: default; }
 .cliprow.head .hlabel { align-self: center; padding-left: 2px; white-space: nowrap; }
 /* hlavička sloupce: klik = hraje jen tento sloupec, dvojklik = přejmenovat */
 .colbtn { display: flex; align-items: center; gap: 6px; min-width: 0; height: 28px; background: var(--ctl); border: 1px solid var(--line2); border-radius: 6px; padding: 0 8px; color: var(--fg3); text-align: left; }
 .colbtn:hover { border-color: #4A505A; }
 .colbtn .cnum { font: 600 12px var(--mono); color: var(--fg); flex: 0 0 auto; }
 .colbtn .cn { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.colbtn.part { border-color: var(--accent); }
-.colbtn.full { background: var(--accent); border-color: var(--accent); }
-.colbtn.full .cnum, .colbtn.full .cn { color: var(--bg); font-weight: 700; }
+.colbtn.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.colbtn.active.playing { background: var(--accent); }
+.colbtn.active.playing .cnum, .colbtn.active.playing .cn { color: var(--bg); font-weight: 700; }
+.colbtn .cready { margin-left: auto; font: 700 10px var(--mono); color: var(--bg); background: var(--yellow); border-radius: 8px; padding: 0 5px; }
+.colbtn.plus { justify-content: center; font-size: 16px; color: var(--muted); padding: 0; border-style: dashed; }
+.colbtn.plus:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .colbtn .inedit { height: 20px; }
 /* přejmenování na místě */
 .inedit { flex: 1 1 auto; min-width: 0; width: 100%; background: var(--bg); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 5px; font-size: 12px; color: var(--fg); outline: none; }
@@ -101,6 +118,9 @@ select { background: var(--ctl); border: 1px solid var(--line2); border-radius: 
 .cell .empty { position: absolute; inset: 4px; border: 1px dashed var(--track); border-radius: 4px; }
 .cell:hover .empty { border-color: #4A505A; }
 .cell.playing { border-color: var(--accent); }
+.cell.ready { border-color: var(--yellow); }
+.cell.othercol.filled:not(.ready) img { opacity: .55; }
+.cell .rbadge { position: absolute; bottom: 3px; left: 3px; font-size: 8px; font-weight: 700; letter-spacing: .05em; line-height: 1; padding: 2px 4px; border-radius: 3px; background: var(--yellow); color: var(--bg); }
 .cell.selected { border-color: #E6E8EB; }
 .cell.playing.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px #E6E8EB; }
 .cell .key { position: absolute; top: 3px; left: 3px; font: 9px/1 var(--mono); padding: 2px 4px; border-radius: 3px; background: rgba(0,0,0,.75); color: var(--fg); }
@@ -111,6 +131,7 @@ select { background: var(--ctl); border: 1px solid var(--line2); border-radius: 
 .cname:empty { cursor: default; }
 .cname:not(:empty):hover { background: var(--ctl); color: var(--fg); }
 .cname.on { color: var(--accent); font-weight: 600; }
+.cname.ready { color: var(--yellow); }
 .cname.sel { background: #E6E8EB; color: var(--bg); }
 .cname.on.sel { background: var(--accent); color: var(--bg); }
 .cellwrap .inedit { height: 18px; }
@@ -182,6 +203,9 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .sect { font-size: 10px; letter-spacing: .08em; color: var(--muted); margin-top: 4px; }
 .prow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 44px; align-items: center; gap: 10px; min-height: 28px; flex: 0 0 auto; }
 .props { gap: 4px; }
+.listen { font-size: 12px; padding: 5px 8px; border-radius: 6px; background: var(--ctl); border: 1px solid var(--line2); }
+.listen.ok { color: var(--green); }
+.listen.fallback { color: var(--orange); border-color: #6b4a22; }
 #bands { display: flex; flex-direction: column; gap: 9px; margin: 2px 0; }
 .audio { gap: 10px; }
 .prow3 { display: grid; grid-template-columns: 70px minmax(0, 1fr) 44px; align-items: center; gap: 10px; }
@@ -231,5 +255,5 @@ input[type=range].slim:hover::-webkit-slider-thumb, input[type=range].slim:focus
 .good { color: var(--green); } .bad { color: #FF7B7B; }
 
 /* zámek: myš nic nemění (kromě zámku a černé), klávesy fungují */
-body.locked .gridwrap, body.locked .lib, body.locked .bottom .props, body.locked .bottom .audio, body.locked .preview .card-head, body.locked .hsplit, body.locked .vsplit { pointer-events: none; }
+body.locked .gridwrap, body.locked .gridbar, body.locked .lib, body.locked .bottom .props, body.locked .bottom .audio, body.locked .preview .card-head, body.locked .hsplit, body.locked .vsplit { pointer-events: none; }
 body.locked .gridwrap { opacity: .92; }

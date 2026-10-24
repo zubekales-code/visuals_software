@@ -31,25 +31,31 @@ export function slim(value: number, min: number, max: number, step: number, onIn
   return r;
 }
 
-// ---------- přejmenování na místě (dvojklik na název) ----------
-let editing = 0;
-/** Právě se něco přejmenovává — mřížka se mezitím nepřekresluje (smazala by rozepsaný text). */
-export const isEditing = () => editing > 0;
+// ---------- přejmenování na místě (pravý klik na název) ----------
+let editInput: HTMLInputElement | null = null;
+let editFinish: ((ok: boolean) => void) | null = null;
+/** Právě se něco přejmenovává — mřížka se mezitím nepřekresluje (smazala by rozepsaný text).
+ *  Pole, které už není na obrazovce, se nepočítá (dřív to uměl zaseknout dvojklik a mřížka se přestala překreslovat). */
+export const isEditing = () => !!editInput && editInput.isConnected;
 /** Nahradí prvek textovým polem. Enter / klik vedle = uložit, Esc = zrušit. onDone(null) = zrušeno. */
 export function inlineEdit(target: HTMLElement, value: string, placeholder: string, onDone: (v: string | null) => void) {
+  editFinish?.(true);                       // rozepsané jiné pole nejdřív uložit
+  if (!target.isConnected) return;          // prvek mezitím zmizel (překreslení) → nic
   const inp = el('input', { type: 'text', class: 'inedit', value, placeholder, spellcheck: 'false' }) as HTMLInputElement;
   let done = false;
-  editing++;
   const finish = (ok: boolean) => {
-    if (done) return; done = true; editing--;
+    if (done) return; done = true;
+    if (editInput === inp) { editInput = null; editFinish = null; }
     inp.remove(); target.hidden = false;
     onDone(ok ? inp.value.trim() : null);
   };
+  editInput = inp; editFinish = finish;
   inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
   inp.addEventListener('blur', () => finish(true));
-  for (const ev of ['click', 'dblclick', 'mousedown', 'pointerdown']) inp.addEventListener(ev, e => e.stopPropagation());
+  for (const ev of ['click', 'dblclick', 'mousedown', 'pointerdown', 'contextmenu']) inp.addEventListener(ev, e => e.stopPropagation());
   target.hidden = true; target.after(inp);
   inp.focus(); inp.select();
+  if (document.activeElement !== inp) finish(false); // pole nejde aktivovat → hned zrušit, ať nic nevisí
 }
 
 // ---------- vyskakovací menu ----------
