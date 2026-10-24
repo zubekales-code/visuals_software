@@ -106,9 +106,16 @@ function createWindows() {
   control.loadFile(join(__dirname, 'control.html'));
   if (SMOKE) for (const [w, n] of [[control, 'pult'], [output, 'výstup']] as const) w.webContents.on('console-message', (e: any) => { if (e.level === 'error' || e.level === 'warning') console.log(`[${n}] ${e.message}`); });
   output.loadFile(join(__dirname, 'output.html'));
+  // Diagnostika do zpravy/chyby.txt: jestli se okna načetla a chyby z jejich konzole.
+  for (const [w, n] of [[control, 'pult'], [output, 'výstup']] as const) {
+    w.webContents.on('did-finish-load', () => logLine(n, 'načteno'));
+    w.webContents.on('did-fail-load', (_e, code, desc) => logLine(n, `nejde načíst: ${desc} (${code})`));
+    w.webContents.on('console-message', (e: any) => { if (e.level === 'error') logLine(n, 'konzole: ' + e.message); });
+  }
 
   // Výstup na externí displej, pokud je připojený (projektor); jinak okno nad pultem.
   output.once('ready-to-show', () => {
+    logLine('výstup', 'připraven k zobrazení');
     const ext = externalDisplay();
     if (ext && !SMOKE) placeOutput(ext.id, true);
     else if (!SMOKE) placeOutput(screen.getPrimaryDisplay().id, false);
@@ -155,7 +162,8 @@ app.whenReady().then(() => {
   watchDisplays();
   ipcMain.on('audio:seek', (_e, sec: number) => { if (output && !output.isDestroyed()) output.webContents.send('audio:seek', sec); });
   ipcMain.on('audio-frame', (_e, f) => { if (control && !control.isDestroyed()) control.webContents.send('audio-frame', f); });
-  ipcMain.on('stats', (_e, s) => { if (control && !control.isDestroyed()) control.webContents.send('stats', s); });
+  let firstStats = true;
+  ipcMain.on('stats', (_e, s) => { if (firstStats) { firstStats = false; logLine('výstup', `běží: ${Math.round(s.fps)} fps, ${s.gpu}`); } if (control && !control.isDestroyed()) control.webContents.send('stats', s); });
   ipcMain.on('test:start', (_e, minutes: number) => { if (output && !output.isDestroyed()) output.webContents.send('test:start', minutes); });
   ipcMain.on('key', (_e, k: string) => { if (control && !control.isDestroyed()) control.webContents.send('key', k); });
   ipcMain.handle('report:write', (_e, r: ReportPayload) => {
