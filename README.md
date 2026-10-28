@@ -12,6 +12,13 @@ Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 v
    - Nová verze samotného `start.bat` se po zavření aplikace nakopíruje sama.
 3. Otevře se **pult** (ovládání, vlevo dole je náhled výstupu — ten jede vždy). Když je připojený projektor, výstup na něj skočí sám přes celou obrazovku; bez projektoru je výstup **vypnutý** (skryté okno) a zapneš ho v menu **Výstup**.
 
+## Testovací .exe (bez Gitu a Node)
+- Stáhni zip z GitHubu: repo → **Releases** → „Testovací .exe v…“ → `VISUALS-…-win-x64.zip`.
+- **Před rozbalením:** pravý klik na zip → Vlastnosti → zaškrtni **Odblokovat** → OK. Pak se SmartScreen neozve (program není podepsaný).
+- Rozbal kamkoli, spusť `VISUALS SOFTWARE EXE\VISUALS.exe`. Knihovnu, `zpravy` a `STAV` si založí vedle sebe (nemíchá se se složkou ze `start.bat`).
+- Grafika: Windows → Obrazovka → Grafika → přidej `VISUALS.exe` → **Vysoký výkon**.
+- Nová verze .exe se sestaví na GitHubu: Actions → „Sestavit .exe“ → Run workflow (dělá Claude). `start.bat` to nijak neovlivní.
+
 ## Než spustíš test na Legionu
 - Lenovo Vantage: **Hybrid mode vypnout** (restart), nabíječka zapojená, **Fn+Q** = výkonný režim.
 - Windows → Nastavení → Systém → Obrazovka → Grafika: přidej `app\node_modules\electron\dist\electron.exe` → **Vysoký výkon**.

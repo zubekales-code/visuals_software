@@ -26,6 +26,7 @@ Pult: `control.ts` (lišta, mřížka, knihovna, vlastnosti, zvuk), `ui/dom.ts` 
 Hodnoty klipu se vždy nahrazují novým objektem (`clip.params = {...}`) — kompozitor pozná změnu podle reference.
 Cesty: `BASE_DIR` = VISUALS SOFTWARE (když aplikace běží z `…\app` vedle start.bat), knihovna `BASE_DIR\knihovna`, zprávy `BASE_DIR\zpravy`.
 `stav.md` v repu = průběžný stav projektu; při startu se kopíruje do `VISUALS SOFTWARE\STAV\stav.md`.
+Sestavený program (.exe): `electron-builder.yml` (asar vypnutý, cíl = složka) + `.github/workflows/exe.yml` (Windows runner, ruční spuštění: tsc, testy, build, electron-builder, zkouška `--smoke`, zip, GitHub Releases `test-v<verze>`). `PACKAGED` → `BASE_DIR` = složka s `VISUALS.exe`. Bez podpisu (SmartScreen: Odblokovat zip).
 Tok: pult → `state` → main → výstup. Výstup → `audio-frame` (každý snímek) + `stats` (2×/s) → pult.
 Klávesy stisknuté ve výstupu jdou do pultu (`key`). Výstup je nezávislé okno: když pult zamrzne, obraz běží dál.
 Okno výstupu žije stále (počítá zvuk a obraz pro náhled v pultu). „Vypnout výstup“ = `hide()` (ne minimalizace); `OutputPlacement.visible` říká, jestli je vidět. Křížek okna ho jen skryje (`close` se ruší, dokud se aplikace nevypíná). Bez projektoru startuje skrytý; připojený projektor ho zapne, odpojený vypne. IPC `output:visible`.
