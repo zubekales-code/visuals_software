@@ -1,14 +1,23 @@
 # Stav — VJ software
-Aktualizováno: 24. 10. 2026, 13:55 · aktuální verze **v0.5**
+Aktualizováno: 28. 10. 2026, 19:00 · aktuální verze **v0.5**
 
 Tento soubor je v repu (`stav.md`) a při každém spuštění aplikace se zkopíruje do `VISUALS SOFTWARE\STAV\stav.md`.
 Claude ho přepisuje na konci každé práce. Starší podoby jsou v historii GitHubu.
 
 ## Kde jsme
-**Etapa 0 (test výkonu)** je postavená. Pult umí: jeden aktivní sloupec + připravené klipy, přidat / smazat sloupce a vrstvy,
-zmenšení mřížky, layouty, přejmenování pravým klikem, sjednocené posuvníky, GLOW, STROBO, Zvuk PC a 3D scény.
-v0.5 opravuje zaseknutou mřížku (dvojklik na název) a ukazuje, co se opravdu poslouchá. Chyby se zapisují do `zpravy\chyby.txt`.
-Pořád se čeká na první měření na Legionu (brána Etapy 0).
+**Etapa 0 (test výkonu)** je postavená a **v0.5 běží na Legionu** (RTX 3060). První měření brány: **těsně neprošlo** —
+průměr 59,35 fps, ale 0,95 % zahozených snímků (limit 0,5 %). **Grafika výkonem stačí s velkou rezervou**
+(8 vrstev vč. 2 videí ≈ 3,4 ms z 16,7 ms na snímek). Zahozené snímky jsou rozprostřené po celém testu (~1 za 2 s),
+nejde tedy o nedostatek výkonu GPU, ale o občasné zaseknutí. Hledá se příčina (viz Čeká nás).
+
+## Měření na Legionu (RTX 3060 Laptop, 1920×1080, glow zap, zvuk wav)
+| Čas | Displej | Vrstvy | Průměr fps | 1 % nejhorších | Nejdelší snímek | Zahozené | GPU (vrstvy + skládání) | Výsledek |
+|---|---|---|---|---|---|---|---|---|
+| 28. 10. 18:51 | 60 Hz | **8** vč. 2 videí (mp4 + webm alfa), 4× 3D | 59,35 | 25,6 | 184 ms | **0,95 %** (34) | ≈ 3,4 ms | ❌ těsně (zahozené) |
+| 28. 10. 18:45 | 60 Hz | 6 vč. videa webm alfa, 3× 3D | 59,5 | 28,9 | 334 ms | 0,53 % (19) | ≈ 3,7 ms | ❌ těsně (zahozené) |
+| 28. 10. 18:40 | **165 Hz** | 5, bez videa | 150,6 | 32,2 | 346 ms | 5,85 % | ≈ 2,7 ms | ❌ displej na 165 Hz |
+
+Paměť ve všech testech stálá (13–14 MB). Zpoždění zvukového řetězce 52 ms. Před testy nebylo potvrzeno: Hybrid mode vypnutý, Fn+Q (výkon), nabíječka.
 
 ## Verze
 | Verze | Datum | Co přibylo |
@@ -21,14 +30,19 @@ Pořád se čeká na první měření na Legionu (brána Etapy 0).
 
 ## Ověřeno
 - **Na PC uživatele (desktop, RTX 4080 SUPER, Claude ovládal pult):** v0.5 běží 58–60 fps; přepnutí sloupce pustí jen připravený klip; klik na klip v jiném sloupci = PŘIPRAVEN; přejmenování pravým klikem; zmenšení 50 / 75 %; + / − sloupce s posuvníkem; menu Layout a Výstup; **Zvuk PC se na Windows připojí** (zeleně „Poslouchám: zvuk tohoto PC“, po startu za ~1 s).
+- **Na Legionu (28. 10.):** Git + Node.js nainstalované, `start.bat` stáhl v0.5, aplikace kreslí na **RTX 3060** (Vysoký výkon pro `electron.exe` zabral), test výkonu se zprávou funguje, paměť stálá. Výkon GPU s rezervou (viz Měření).
 - V cloudu: 17 testů logiky + automatický test pultu a výstupu (4 3D scény, GLOW, STROBO), 0 chyb.
-- **Neověřeno:** Zvuk PC při skutečně hrající hudbě (při testu nic nehrálo) · Legion (RTX 3060) · projektor za běhu.
+- **Neověřeno:** brána Etapy 0 (plynulost bez zahozených snímků) · Hybrid mode na Legionu · Zvuk PC při skutečně hrající hudbě · projektor za běhu · 10min a 2h test.
 
 ## Čeká nás
-- [ ] **Krok 0:** na Legionu Git + Node.js LTS, nastavit Hybrid off / Vysoký výkon / 60 Hz, spustit `start.bat` (stáhne v0.5)
+- [x] **Krok 0:** na Legionu Git + Node.js LTS, `start.bat` (v0.5), `electron.exe` → Vysoký výkon, displej 60 Hz
+- [ ] **Najít příčinu zahozených snímků** (od nejlevnějšího, vždy Sestava brány → 1 min):
+  - [ ] Legion: **Hybrid mode vypnout** (Lenovo Vantage / Legion Space → Grafika; po změně restart), nabíječka, **Fn+Q** = výkon (tlačítko napájení svítí červeně) → test
+  - [ ] Stejný test s vypnutým **Živým náhledem v pultu** (menu Výstup) → ukáže, jestli zasekává náhled v pultu
+  - [ ] Pak **10 min** test (zahozené po startu vs. pravidelně; paměť)
+  - [ ] Když to nepomůže: Claude doplní do zprávy časy zaseknutí a rozložení délek snímků (jen se souhlasem — změna kódu)
 - [ ] Pustit hudbu v PC se zdrojem **Zvuk PC** → pásma se musí hýbat; kdyby se znovu stalo „nic nereaguje“, Claude si přečte `zpravy\chyby.txt`
-- [ ] **Etapa 0:** Test výkonu → Sestava brány → 1 min → zpráva `zpravy\test_….txt` (brána: 60 fps, 7 vrstev + video)
-- [ ] Etapa 0: další měření — mimo jiné **sloupec 3 (4× 3D scéna)** a GLOW na několika klipech zároveň
+- [ ] Etapa 0: další měření — GLOW na několika klipech zároveň · výstup na projektor (HDMI na Legionu 5 obvykle vede přímo z RTX — ověřit)
 - [ ] Rozhodnout jeden vs. dva procesy (podle měření)
 - [ ] Etapa 1 Jádro — až po bráně
 - [ ] Etapa 2 Pult (napojení posuvníků na zvuk: množství / náběh / doznění, MIDI později) · Etapa 3 Videa a spolehlivost · Etapa 4 Na akci
@@ -36,7 +50,7 @@ Pořád se čeká na první měření na Legionu (brána Etapy 0).
 ## Otevřená rozhodnutí
 - Jeden vs. dva procesy (teď: nezávislé výstupní okno + náhled v pultu) → podle měření.
 - Zpoždění zvuk→obraz (kabel i Zvuk PC): zatím jen odhad; skutečné změření v Etapě 1.
-- Kolik 3D vrstev najednou utáhne Legion → podle měření (odhad 2–3 těžké).
+- Kolik 3D vrstev najednou utáhne Legion → první měření: 4× 3D + 2 videa + 2 tvary stojí GPU jen ≈ 3,4 ms (výkonem v pohodě; plynulost se ještě řeší).
 - Klávesy klipů: řady po vrstvách (8 = 1–0, 7 = Q–P, 6 = A–;, 5 = Z–/, 4 = ⇧1–0, 3 = ⇧Q–P, 2 = F1–F10, 1 = ⇧F1–F10), jen prvních 8 vrstev × 10 sloupců. Sloupce zatím jen myší.
 
 ## Později (nápady mimo etapu)
@@ -46,3 +60,6 @@ MIDI + learn · klávesy pro spuštění sloupce · další 3D scény (cel shadi
 - Claude vidí složku VISUALS SOFTWARE přes desktopovou aplikaci (chat propojený s počítačem): čte `zpravy\chyby.txt` i zprávy z testů sám.
 - Claude umí na PC sám spustit `start.bat` a proklikat pult (ovládání počítače). Testováno na stolním PC (RTX 4080 SUPER, 2 monitory: PA278CV + DELL jako „projektor“). Hrací stroj je dál Legion (RTX 3060).
 - `start.bat` před aktualizací vrací `package-lock.json` (jinak `git pull` selže).
+- **Na novém PC:** do složky `VISUALS SOFTWARE` dát **jen `start.bat`** (ne rozbalený zip z GitHubu). Když vedle něj leží `package.json`, myslí si, že je uvnitř aplikace, a spadne na „not a git repository“. Na Legionu je starý rozbalený zip odklizený v `_rozbaleny_zip` (lze smazat).
+- Legion: uživatelská složka `C:\Users\Uzivatel\Desktop\VISUALS\VISUALS SOFTWARE\` (na stolním PC `C:\Users\zubek\…`). `electron.exe` je v `app\node_modules\electron\dist\`.
+- Přenosná verze „rozbal kdekoli a spusť“ (.exe přes electron-builder, bez Gitu a Node) = **Etapa 4**.
