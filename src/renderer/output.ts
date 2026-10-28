@@ -93,7 +93,7 @@ function loop() {
 function layerGpu(): Record<string, number | null> {
   const out: Record<string, number | null> = {};
   if (!comp || !state) return out;
-  state.layers.forEach((l, i) => { const c = activeClip(l); if (l.on && c) out[`${i + 1} ${c.content}`] = comp!.layerGpuMs(i); });
+  state.layers.forEach((l, i) => { const c = activeClip(l); if (l.on && c) out[`${state!.layers.length - i} ${c.content}`] = comp!.layerGpuMs(i); });
   return out;
 }
 

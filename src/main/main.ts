@@ -57,7 +57,10 @@ function displays(): DisplayInfo[] {
 }
 
 // ---------- výstup na monitor ----------
-let placement: OutputPlacement = { displayId: 0, fullscreen: false };
+// Okno výstupu žije vždy (počítá zvuk a obraz pro náhled v pultu); „vypnout výstup“ ho jen SKRYJE (ne minimalizuje).
+let placement: OutputPlacement = { displayId: 0, fullscreen: false, visible: false };
+let outputVisible = false;
+let quitting = false;
 const externalDisplay = () => screen.getAllDisplays().find(d => d.id !== screen.getPrimaryDisplay().id);
 
 function placeOutput(displayId: number, fullscreen: boolean) {
@@ -65,26 +68,48 @@ function placeOutput(displayId: number, fullscreen: boolean) {
   const d = screen.getAllDisplays().find(x => x.id === displayId) ?? screen.getPrimaryDisplay();
   output.setFullScreen(false);
   output.setBounds({ x: d.bounds.x + 60, y: d.bounds.y + 60, width: Math.min(1280, d.workArea.width - 120), height: Math.min(720, d.workArea.height - 120) });
+  output.show();
   if (fullscreen) { output.setBounds(d.bounds); output.setFullScreen(true); }
-  else { output.show(); output.moveTop(); }
-  placement = { displayId: d.id, fullscreen };
+  else output.moveTop();
+  outputVisible = true;
+  placement = { displayId: d.id, fullscreen, visible: true };
   sendDisplays(); sendDisplayHz();
 }
 
+/** Vypnout výstup = skrýt okno. Poslední umístění se pamatuje, zapnutí se tam vrátí. */
+function hideOutput() {
+  if (!output || output.isDestroyed()) return;
+  displaysInfo(); // aktualizuje poslední umístění z okna
+  if (output.isFullScreen()) output.setFullScreen(false);
+  output.hide();
+  outputVisible = false;
+  placement = { ...placement, visible: false };
+  sendDisplays();
+}
+
+/** Zapnout výstup: tam, kde byl naposledy (když ten monitor ještě je), jinak na projektor / monitor přes celou obrazovku, jinak okno na notebooku. */
+function showOutput() {
+  const last = screen.getAllDisplays().find(d => d.id === placement.displayId);
+  if (last) return placeOutput(last.id, placement.fullscreen);
+  const ext = externalDisplay();
+  if (ext) placeOutput(ext.id, true); else placeOutput(screen.getPrimaryDisplay().id, false);
+}
+const setOutputVisible = (v: boolean) => { if (v) showOutput(); else hideOutput(); };
+
 function displaysInfo(): DisplaysInfo {
-  if (output && !output.isDestroyed()) {
+  if (output && !output.isDestroyed() && outputVisible && output.isVisible()) {
     const d = screen.getDisplayMatching(output.getBounds());
-    placement = { displayId: d.id, fullscreen: output.isFullScreen() };
-  }
+    placement = { displayId: d.id, fullscreen: output.isFullScreen(), visible: true };
+  } else placement = { ...placement, visible: false };
   return { displays: displays(), placement };
 }
 function sendDisplays() { if (control && !control.isDestroyed()) control.webContents.send('displays', displaysInfo()); }
 
-/** Monitor připojený za běhu → výstup na něj přes celou obrazovku; odpojený → výstup do okna na notebooku. */
+/** Monitor připojený za běhu → výstup na něj přes celou obrazovku; odpojený → výstup se vypne (náhled v pultu jede dál). */
 function watchDisplays() {
   screen.on('display-added', (_e, d) => { if (!SMOKE && d.id !== screen.getPrimaryDisplay().id) setTimeout(() => placeOutput(d.id, true), 800); else sendDisplays(); });
   screen.on('display-removed', (_e, d) => {
-    if (placement.displayId === d.id) placeOutput(screen.getPrimaryDisplay().id, false); else sendDisplays();
+    if (outputVisible && placement.displayId === d.id) { hideOutput(); placement = { ...placement, displayId: 0, fullscreen: false }; sendDisplays(); } else sendDisplays();
   });
   screen.on('display-metrics-changed', () => { sendDisplays(); sendDisplayHz(); });
 }
@@ -103,7 +128,9 @@ function createWindows() {
     backgroundThrottling: false, // výstup nesmí zpomalit, když okno není v popředí
   };
   control = new BrowserWindow({ width: SMOKE ? 1707 : 1500, height: SMOKE ? 1067 : 940, minWidth: 1280, minHeight: 760, title: 'VJ pult', backgroundColor: '#111311', webPreferences });
-  output = new BrowserWindow({ width: 1280, height: 720, title: 'VJ výstup', backgroundColor: '#000000', webPreferences });
+  // Výstup startuje skrytý (zapne se sám jen na projektoru); okno ale žije dál a počítá obraz + zvuk pro náhled v pultu.
+  output = new BrowserWindow({ width: 1280, height: 720, title: 'VJ výstup', backgroundColor: '#000000', show: SMOKE, webPreferences });
+  outputVisible = SMOKE;
   if (!SMOKE) control.maximize(); // pult vždy přes celou obrazovku notebooku
   control.setMenuBarVisibility(false);
   output.setMenuBarVisibility(false);
@@ -117,15 +144,17 @@ function createWindows() {
     w.webContents.on('console-message', (e: any) => { if (e.level === 'error') logLine(n, 'konzole: ' + e.message); });
   }
 
-  // Výstup na externí displej, pokud je připojený (projektor); jinak okno nad pultem.
+  // Výstup na externí displej, pokud je připojený (projektor). Bez projektoru zůstane vypnutý (náhled je v pultu), zapne se v menu Výstup.
   output.once('ready-to-show', () => {
-    logLine('výstup', 'připraven k zobrazení');
+    logLine('výstup', 'připraven (skrytý, dokud ho nezapneš nebo nepřipojíš projektor)');
     const ext = externalDisplay();
     if (ext && !SMOKE) placeOutput(ext.id, true);
-    else if (!SMOKE) placeOutput(screen.getPrimaryDisplay().id, false);
+    else sendDisplays();
   });
 
-  control.on('closed', () => { control = null; if (output && !output.isDestroyed()) output.close(); });
+  control.on('closed', () => { control = null; quitting = true; if (output && !output.isDestroyed()) output.destroy(); });
+  // Zavření okna výstupu křížkem = jen vypnout výstup (okno musí žít dál, jinak by náhled v pultu oněměl).
+  output.on('close', e => { if (!quitting) { e.preventDefault(); hideOutput(); } });
   // Zamrzlé nebo spadlé okno → do záznamu (pult zamrzne = nejde nic přesouvat, výstup jede dál).
   for (const [w, n] of [[control, 'pult'], [output, 'výstup']] as const) {
     w.on('unresponsive', () => logLine(n, 'okno přestalo reagovat (zamrzlo)'));
@@ -134,7 +163,7 @@ function createWindows() {
   }
   output.on('closed', () => { output = null; });
   // Minimalizovaný výstup by přestal kreslit a poslouchat zvuk → hned ho vrátit.
-  output.on('minimize', () => { logLine('výstup', 'byl minimalizován → vracím'); setTimeout(() => { if (output && !output.isDestroyed()) output.restore(); }, 100); });
+  output.on('minimize', () => { if (!outputVisible) return; logLine('výstup', 'byl minimalizován → vracím'); setTimeout(() => { if (output && !output.isDestroyed() && outputVisible) output.restore(); }, 100); });
   output.on('moved', () => { sendDisplayHz(); sendDisplays(); });
   output.on('enter-full-screen', () => { sendDisplayHz(); sendDisplays(); });
   output.on('leave-full-screen', sendDisplays);
@@ -199,6 +228,7 @@ app.whenReady().then(() => {
   ipcMain.handle('file:url', (_e, p: string) => pathToFileURL(p).href);
   ipcMain.handle('displays', () => displaysInfo());
   ipcMain.on('output:place', (_e, id: number, fs: boolean) => placeOutput(id, fs));
+  ipcMain.on('output:visible', (_e, v: boolean) => setOutputVisible(!!v));
   ipcMain.handle('smoke', () => SMOKE);
   ipcMain.on('log:error', (e, t: string) => logLine(e.sender === control?.webContents ? 'pult' : 'výstup', t));
   logLine('start', `aplikace v${app.getVersion()} spuštěna`);
@@ -208,7 +238,8 @@ app.whenReady().then(() => {
     try { const r = await output.webContents.executeJavaScript('window.__vjCaptureSystem()', true); return typeof r === 'string' ? r : ''; }
     catch (e) { return (e as Error).message || String(e); }
   });
-  if (SMOKE) ipcMain.on('stats', (_e, s) => console.log(`stats fps=${s.fps.toFixed(1)} errors=${s.errors.length} ${s.errors.join(' | ')}`));
+  let smokeStats = 0, smokeFps = 0;
+  if (SMOKE) ipcMain.on('stats', (_e, s) => { smokeStats++; smokeFps = s.fps; console.log(`stats fps=${s.fps.toFixed(1)} errors=${s.errors.length} ${s.errors.join(' | ')}`); });
   ipcMain.on('smoke:done', async (_e, ok: boolean, info: string) => {
     console.log((ok ? 'SMOKE OK ' : 'SMOKE FAIL ') + info);
     // snímek výstupu a pultu pro kontrolu očima
@@ -287,6 +318,18 @@ app.whenReady().then(() => {
       // GLOW a STROBO na 3D vrstvách (výstup je pak vykreslí v testu výkonu)
       window.__vjSet(s => { s.layers[2].clips[2].params = { glow: 0.8 }; s.layers[3].clips[2].params = { strobe: 1 }; s.layers[4].clips[2].params = { strobe: 2, strobeMode: 'hit', glow: 0.5 }; s.selected = { layer: 4, col: 2 }; s.preview = true; });
       out.push('props=' + Array.from(document.querySelectorAll('#props .plabel')).map(e => e.textContent).filter(Boolean).join('/'));
+      // číslování vrstev: nahoře 1, 2, 3 …
+      out.push('layerNames=' + Array.from(document.querySelectorAll('#rows .lhead .name')).map(e => e.textContent).join(','));
+      // skrývání properties: ⚙ Zobrazit → odškrtnout TLOUŠŤKA → zmizí z panelu; „Zobrazit vše“ ji vrátí
+      const menuLabel = t => Array.from(document.querySelectorAll('#menu label.mrow')).find(x => x.textContent.startsWith(t));
+      const plabels = () => Array.from(document.querySelectorAll('#props .plabel')).map(e => e.textContent).filter(Boolean).join('/');
+      const withSize = plabels();
+      document.getElementById('propsGear').click(); await wait(30);
+      const cbSize = menuLabel('TLOUŠŤKA').querySelector('input'); cbSize.checked = false; cbSize.dispatchEvent(new Event('change', { bubbles: true })); await wait(30);
+      const noSize = plabels(), gearTxt = document.getElementById('propsGear').textContent;
+      menuClick('Zobrazit vše'); const allBtn = Array.from(document.querySelectorAll('#menu button')).find(b => b.textContent === 'Zobrazit vše'); if (allBtn) allBtn.click(); await wait(30);
+      const back = plabels();
+      out.push('hideProps size:' + withSize.includes('TLOUŠŤKA') + '>' + noSize.includes('TLOUŠŤKA') + '>' + back.includes('TLOUŠŤKA') + ' gear=' + gearTxt);
       return out.join(' | ');
     })()`;
     try { console.log('UI ' + await control!.webContents.executeJavaScript(js)); } catch (e) { console.log('UI FAIL ' + (e as Error).message); }
@@ -295,6 +338,16 @@ app.whenReady().then(() => {
       try { console.log('JS ' + await control!.webContents.executeJavaScript(readFileSync(process.env.VJ_SMOKE_JS, 'utf8'))); } catch (e) { console.log('JS FAIL ' + (e as Error).message); }
     }
   }, 7000);
+  // Automatický test výstupu: skrytí okna (ne minimalizace) nesmí zastavit obraz a zvuk pro náhled v pultu.
+  if (SMOKE) setTimeout(async () => {
+    const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+    const b0 = smokeStats; await wait(2500); const base = smokeStats - b0; // srovnání: stejně dlouhý úsek, dokud je výstup vidět
+    const n0 = smokeStats; hideOutput(); await wait(2500);
+    const vis = output && !output.isDestroyed() ? output.isVisible() : false;
+    console.log(`OUT hidden visible=${vis} placement.visible=${displaysInfo().placement.visible} statsDelta=${smokeStats - n0} (viditelný: ${base}) fps=${smokeFps.toFixed(1)}`);
+    showOutput(); await wait(800);
+    console.log(`OUT shown visible=${output && !output.isDestroyed() ? output.isVisible() : false} placement.visible=${displaysInfo().placement.visible}`);
+  }, 9000);
   // Automatický test importu (soubory připraví testovací skript): kopie zvuku + převod videa ffmpegem.
   if (SMOKE && process.env.VJ_SMOKE_IMPORT) setTimeout(async () => {
     const r = await importFiles(process.env.VJ_SMOKE_IMPORT!.split('|'), () => {});
@@ -303,6 +356,7 @@ app.whenReady().then(() => {
   }, 1500);
 });
 
+app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => app.quit());
 
 /** stav.md z aplikace → VISUALS SOFTWARE\STAV\stav.md (po každé aktualizaci je tam aktuální stav). */

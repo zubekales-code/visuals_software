@@ -189,7 +189,7 @@ export interface AudioSettings {
 }
 
 export interface AppState {
-  layers: LayerState[];  // index 0 = Vrstva 1 (dole)
+  layers: LayerState[];  // index 0 = SPODNÍ vrstva (kreslí se první); v pultu se číslují shora: horní řada = Vrstva 1
   colNames: string[];    // vlastní názvy sloupců ("" = číslo); délka = počet sloupců
   column: number;        // aktivní sloupec (vždy právě jeden)
   selected: { layer: number; col: number } | null; // klip ve vlastnostech
@@ -236,7 +236,8 @@ export interface ImportResult { ids: string[]; errors: string[] }
 export interface SadaInfo { name: string; savedAt: string }
 /** Uložená sada = rozložení mřížky + klipy s nastavením (estetika). Systém pod tím je stejný. */
 export interface SadaFile { app: 'vj'; version: 1; name: string; savedAt: string; layers: LayerState[]; glow: AppState['glow']; bpm: number; colNames?: string[]; column?: number }
-export interface OutputPlacement { displayId: number; fullscreen: boolean }
+/** Kam jde výstup. visible = false: okno výstupu je skryté (náhled v pultu a zvuk jedou dál), displayId / fullscreen = poslední volba. */
+export interface OutputPlacement { displayId: number; fullscreen: boolean; visible: boolean }
 export interface DisplaysInfo { displays: DisplayInfo[]; placement: OutputPlacement }
 
 export interface LayerStat { ms: number }
@@ -295,6 +296,8 @@ export interface VjApi {
   fileUrl(path: string): Promise<string>;
   displays(): Promise<DisplaysInfo>;
   placeOutput(displayId: number, fullscreen: boolean): void;
+  /** Zapnout (ukázat) / vypnout (skrýt) okno výstupu na monitor / projektor. Náhled v pultu běží vždy. */
+  setOutputVisible(visible: boolean): void;
   sendKey(key: string): void;
   onKey(cb: (key: string) => void): void;
   /** Obnovovací frekvence displeje, na kterém je výstupní okno (z Windows). */

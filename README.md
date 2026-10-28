@@ -8,7 +8,7 @@ Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 v
 2. Dej `start.bat` do složky `VISUALS SOFTWARE` a dvakrát na něj klikni.
    - Poprvé stáhne aplikaci do podsložky `app` a nainstaluje knihovny. Trvá to pár minut a GitHub se jednou zeptá na přihlášení.
    - Příště si sám stáhne novou verzi a spustí se.
-3. Otevřou se dvě okna: **pult** (ovládání) a **výstup** (projektor). Když je připojený projektor, výstup na něj skočí sám přes celou obrazovku.
+3. Otevře se **pult** (ovládání, vlevo dole je náhled výstupu — ten jede vždy). Když je připojený projektor, výstup na něj skočí sám přes celou obrazovku; bez projektoru je výstup **vypnutý** (skryté okno) a zapneš ho v menu **Výstup**.
 
 ## Než spustíš test na Legionu
 - Lenovo Vantage: **Hybrid mode vypnout** (restart), nabíječka zapojená, **Fn+Q** = výkonný režim.
@@ -16,7 +16,7 @@ Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 v
 - Displej, na kterém běží výstup, přepni na **60 Hz** (Upřesnit nastavení zobrazení).
 
 ## Test brány Etapy 0
-1. V horní liště klikni na **Test výkonu** → **Sestava brány** (vrstvy 2–8 = 7 vrstev vč. videa).
+1. V horní liště klikni na **Test výkonu** → **Sestava brány** (všechny vrstvy kromě spodní = 7 vrstev vč. videa; měř se **zapnutým** výstupem).
 2. **Spustit 1 min**. Během testu na nic nesahej.
 3. Výsledek se ukáže v pultu a uloží se do `VISUALS SOFTWARE\zpravy\test_….txt` a `.json`. Tam si ho přečte i Claude.
 4. Brána: **PROŠLO** = 60 fps, zahozených snímků pod 0,5 %, kreslí RTX.
@@ -37,11 +37,13 @@ Vypadá podle schváleného konceptu (`INTERFACE KONCEPT`): nahoře lišta, vlev
 - **Layout** (vpravo v liště) = rozložení pultu: velikosti panelů, zmenšení mřížky, knihovna. Ulož pod jménem, přepínej, **Výchozí rozložení** vrátí původní stav. Co hraje a kolik je vrstev / sloupců, patří do sady.
 - **Hlavička vrstvy:** oko zapne/vypne vrstvu, posuvník = průhlednost, Normál/Add/Screen = prolínání, 1/½/¼ = rozlišení vrstvy (menší = levnější).
 - **Velikosti částí:** táhni za proužky mezi knihovnou a mřížkou, nad spodní částí a mezi spodními panely. Dvojklik = výchozí. Knihovnu schováš šipkou ‹.
-- **Výstup** (tlačítko v liště): na který monitor, celá obrazovka nebo okno, rozlišení obrazu. Připojený projektor = výstup na něj skočí sám, odpojený = výstup do okna.
+- **Výstup** (tlačítko v liště): nahoře přepínač **Zapnout / Vypnout výstup** (vypnutí okno úplně skryje, nejen minimalizuje; náhled v pultu a zvuk jedou dál). Dál: na který monitor, celá obrazovka nebo okno, rozlišení obrazu. Připojený projektor = výstup na něj skočí sám, odpojený = výstup se vypne. Zavření okna výstupu křížkem ho taky jen vypne.
+- **Číslování vrstev:** nahoře je **Vrstva 1**, pod ní 2, 3 … Horní řada je nahoře i v obraze (kreslí se přes ostatní). Vlastní názvy vrstev zůstávají.
 - **ZÁMEK** (Ctrl+L): myš nic nezmění, klávesy dál spouští klipy.
 - **Test výkonu** je v horní liště.
 
 ## Nastavení klipu (panel dole uprostřed)
+- **⚙ Zobrazit** (vpravo v záhlaví panelu): odškrtni vlastnosti, které nechceš vidět (např. TLOUŠŤKA, 3D kamera, STROBO, Průhlednost vrstvy). Platí pro všechny klipy a pamatuje se. Skrytá vlastnost dál platí s nastavenou hodnotou, jen ji nevidíš. **Zobrazit vše** vrátí všechno.
 Všechny vizuály mají **stejné kategorie** (co přesně dělají u daného vizuálu, ukáže bublina po najetí myší):
 | Kategorie | Co dělá |
 |---|---|
@@ -78,14 +80,14 @@ Každá vrstva má svou řadu kláves. Klávesa spustí klip v daném sloupci, d
 
 | Vrstva | Klávesy (sloupec 1–10) |
 |---|---|
-| 8 | 1 2 3 … 0 |
-| 7 | Q W E … P |
-| 6 | A S D … ; |
-| 5 | Z X C … / |
-| 4 | Shift + 1 … 0 |
-| 3 | Shift + Q … P |
-| 2 | F1 … F10 |
-| 1 | Shift + F1 … F10 |
+| 1 (nahoře) | 1 2 3 … 0 |
+| 2 | Q W E … P |
+| 3 | A S D … ; |
+| 4 | Z X C … / |
+| 5 | Shift + 1 … 0 |
+| 6 | Shift + Q … P |
+| 7 | F1 … F10 |
+| 8 (dole) | Shift + F1 … F10 |
 
 | Klávesa | Co dělá |
 |---|---|

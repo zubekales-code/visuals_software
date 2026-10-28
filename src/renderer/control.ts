@@ -17,7 +17,7 @@ addEventListener('error', e => vj.logError(`${e.message} (${String(e.filename ||
 addEventListener('unhandledrejection', e => vj.logError('nedokončená akce: ' + ((e.reason as Error)?.stack || e.reason)));
 const EYE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
 const MIME_CLIP = 'application/x-vj-clip', MIME_ITEM = 'application/x-vj-item';
-const VERSION = 'v0.5';
+const VERSION = 'v0.6';
 
 // ---------- stav + autosave ----------
 const SAVE_KEY = 'vj.state.v2';
@@ -62,7 +62,9 @@ function setContent(list: ContentItem[]) {
 const itemName = (id: string) => byId.get(id)?.name ?? id.replace(/^\w+:/, '') + ' (chybí)';
 /** Název klipu v mřížce: vlastní název, jinak název vizuálu. */
 const clipName = (c: ClipState) => c.name || itemName(c.content);
-const layerName = (i: number) => state.layers[i]?.name || `Vrstva ${i + 1}`;
+/** Číslo vrstvy v pultu: horní řada = 1, pak 2, 3 … (index 0 v datech = spodní řada = nejvyšší číslo). */
+const layerNo = (i: number) => state.layers.length - i;
+const layerName = (i: number) => state.layers[i]?.name || `Vrstva ${layerNo(i)}`;
 const colName = (c: number) => state.colNames[c] || '';
 const isAlphaVideo = (id: string) => id.startsWith('video:') && id.toLowerCase().endsWith('.webm');
 
@@ -209,29 +211,38 @@ $('brand').onclick = async e => {
 };
 
 // ---------- výstup na monitor ----------
-let disp: DisplaysInfo = { displays: [], placement: { displayId: 0, fullscreen: false } };
+let disp: DisplaysInfo = { displays: [], placement: { displayId: 0, fullscreen: false, visible: false } };
 function renderOutBtn() {
   const d = disp.displays.find(x => x.id === disp.placement.displayId);
   const ext = !!d && !d.primary;
-  $('projDot').classList.toggle('ok', ext && disp.placement.fullscreen);
-  $('outTxt').textContent = d
-    ? `Výstup · ${d.primary ? 'notebook' : 'projektor'}${disp.placement.fullscreen ? ' · celá obr.' : ' · okno'} · ${state.outW}×${state.outH}`
-    : `Výstup · ${state.outW}×${state.outH}`;
+  const vis = disp.placement.visible;
+  $('projDot').classList.toggle('ok', vis && ext && disp.placement.fullscreen);
+  $('outTxt').textContent = !vis
+    ? `Výstup · vypnutý · ${state.outW}×${state.outH}`
+    : d
+      ? `Výstup · ${d.primary ? 'notebook' : 'projektor'}${disp.placement.fullscreen ? ' · celá obr.' : ' · okno'} · ${state.outW}×${state.outH}`
+      : `Výstup · ${state.outW}×${state.outH}`;
 }
-vj.onDisplays(d => { const had = disp.displays.length; disp = d; renderOutBtn(); if (had && d.displays.length !== had) toast(d.displays.length > had ? 'Připojen nový monitor → výstup na něj.' : 'Monitor odpojen → výstup v okně na notebooku.'); });
+vj.onDisplays(d => { const had = disp.displays.length; disp = d; renderOutBtn(); if (had && d.displays.length !== had) toast(d.displays.length > had ? 'Připojen nový monitor → výstup na něj.' : 'Monitor odpojen → výstup vypnutý (náhled v pultu jede dál).'); });
 $('outBtn').dataset.menuAnchor = '1';
 $('outBtn').onclick = async () => {
   disp = await vj.displays(); renderOutBtn();
   const m = openMenu($('outBtn'), 360); // pozor: e.currentTarget je po await prázdné (menu se dřív neotevřelo)
-  m.append(el('div', { class: 'mtitle' }, 'Kam jde výstup'));
+  const vis = disp.placement.visible;
+  m.append(el('div', { class: 'mtitle' }, 'Výstup na monitor / projektor'));
+  m.append(el('div', { class: 'mrow' },
+    el('span', { style: 'flex:1', class: vis ? 'accent' : 'muted' }, vis ? '● Výstup je zapnutý' : '○ Výstup je vypnutý (náhled v pultu jede dál)'),
+    el('button', { class: 'btn sm' + (vis ? '' : ' on'), id: 'outToggle', onclick: () => { vj.setOutputVisible(!vis); closeMenu(); } }, vis ? 'Vypnout výstup' : 'Zapnout výstup')));
+  m.append(el('div', { class: 'msep' }));
+  m.append(el('div', { class: 'mtitle' }, 'Kam jde výstup (kliknutí ho zároveň zapne)'));
   for (const d of disp.displays) {
-    const here = d.id === disp.placement.displayId;
+    const here = vis && d.id === disp.placement.displayId;
     m.append(el('div', { class: 'mrow' },
       el('span', { style: 'flex:1', class: here ? 'accent' : '' }, `${here ? '● ' : ''}${d.primary ? 'Notebook' : 'Projektor / monitor'} · ${d.width}×${d.height} · ${d.refresh} Hz`),
       el('button', { class: 'btn sm' + (here && disp.placement.fullscreen ? ' on' : ''), onclick: () => { vj.placeOutput(d.id, true); closeMenu(); } }, 'Celá obrazovka'),
       el('button', { class: 'btn sm' + (here && !disp.placement.fullscreen ? ' on' : ''), onclick: () => { vj.placeOutput(d.id, false); closeMenu(); } }, 'Okno')));
   }
-  if (disp.displays.length < 2) m.append(el('div', { class: 'mrow muted sm' }, 'Je připojený jen notebook. Projektor připoj kdykoliv (HDMI) — výstup na něj skočí sám.'));
+  if (disp.displays.length < 2) m.append(el('div', { class: 'mrow muted sm' }, 'Je připojený jen notebook. Projektor připoj kdykoliv (HDMI) — výstup na něj skočí sám (a jde zase vypnout).'));
   m.append(el('div', { class: 'msep' }));
   const res = el('select', { onchange: (ev: Event) => { const [w, h] = (ev.target as HTMLSelectElement).value.split('x').map(Number); state.outW = w; state.outH = h; send(false); renderOutBtn(); } },
     ...['1920x1080', '1280x720', '2560x1440', '640x360'].map(v => el('option', { value: v, selected: v === `${state.outW}x${state.outH}` || undefined }, v.replace('x', '×') + (v === '640x360' ? ' (zkouška)' : ''))));
@@ -250,6 +261,7 @@ $('testBtn').onclick = e => {
   const draw = () => {
     m.textContent = '';
     m.append(el('div', { class: 'mtitle' }, 'Test výkonu · brána Etapy 0: 60 fps se 7 vrstvami a videem'));
+    if (!disp.placement.visible) m.append(el('div', { class: 'mrow sm err' }, '⚠ Výstup je vypnutý (skryté okno). Pro věrné měření ho zapni v menu Výstup — skryté okno nemusí mít skutečný rytmus displeje.'));
     m.append(el('div', { class: 'mrow' },
       el('button', { class: 'btn sm on', onclick: () => setPreset('gate') }, 'Sestava brány'),
       el('button', { class: 'btn sm', onclick: () => setPreset('all') }, 'Zátěž: všech 8'),
@@ -278,7 +290,7 @@ $('testBtn').onclick = e => {
 };
 
 function setPreset(kind: 'gate' | 'all' | 'none') {
-  // Hraje jen aktivní sloupec: brána = celý aktivní sloupec kromě vrstvy 1 (výchozí sada: 7 vrstev vč. videa).
+  // Hraje jen aktivní sloupec: brána = celý aktivní sloupec kromě spodní vrstvy (index 0; výchozí sada: 7 vrstev vč. videa).
   const col = state.column;
   state.layers.forEach((l, i) => {
     if (kind === 'none') { l.active = -1; return; }
@@ -431,7 +443,7 @@ function layerMenu(anchor: HTMLElement, nameEl: HTMLElement, li: number) {
   m.append(el('div', { class: 'mtitle' }, layerName(li)));
   m.append(el('button', { class: 'mitem', onclick: () => {
     closeMenu();
-    inlineEdit(nameEl, state.layers[li].name ?? '', `Vrstva ${li + 1}`, v => { if (v !== null) { state.layers[li].name = v || undefined; send(); } renderAll(); });
+    inlineEdit(nameEl, state.layers[li].name ?? '', `Vrstva ${layerNo(li)}`, v => { if (v !== null) { state.layers[li].name = v || undefined; send(); } renderAll(); });
   } }, 'Přejmenovat…'));
   const full = state.layers.length >= MAX_LAYERS;
   m.append(el('button', { class: 'mitem', disabled: full || undefined, onclick: () => { closeMenu(); if (addLayer(state, li + 1)) commit(); } }, 'Přidat vrstvu nad'));
@@ -692,7 +704,8 @@ function renderProps() {
     el('span', { class: 'title ell' }, clipName(clip)),
     el('span', { class: 'muted sm ell' }, `${layerName(s.layer)} · ${isVideo ? 'video' : isScene ? '3D scéna' : 'tvar'} · ${itemName(clip.content)} · klávesa ${keyLabel(s.layer, s.col)}`),
     el('div', { class: 'spacer' }),
-    el('span', { class: 'muted sm', style: 'white-space:nowrap' }, l.active === s.col ? '▶ hraje' : 'nehraje')));
+    el('span', { class: 'muted sm', style: 'white-space:nowrap' }, l.active === s.col ? '▶ hraje' : 'nehraje'),
+    gear));
 
   // Vždy nový objekt hodnot: kompozitor tak pozná změnu (náhled i výstup se hned překreslí).
   const setP = (k: keyof ClipParams, v: unknown, thumb = true) => { clip.params = { ...clip.params, [k]: v }; send(); if (thumb) scheduleGrid(); };
@@ -700,61 +713,105 @@ function renderProps() {
   const d = h?.defaults;
   const cur = <K extends keyof ClipParams>(k: K) => (clip.params[k] ?? (d as any)?.[k]);
 
-  p.append(el('span', { class: 'sect' }, 'KLIP'));
-  if (!isVideo && !h) p.append(el('div', { class: 'hint' }, 'Vizuál se nepodařilo načíst (chyba v hlavičce).'));
+  // Každý řádek se zapíše do seznamu s pevným id; co si uživatel skryl (⚙ Zobrazit), se nevykreslí.
+  // id '' = vždy viditelné (nápovědy). Seznam slouží i menu ⚙ Zobrazit.
+  const entries: PropEntry[] = [];
+  let section = 'KLIP';
+  const add = (id: string, label: string, ...nodes: HTMLElement[]) => { entries.push({ id, label, section, nodes }); };
+
+  if (!isVideo && !h) add('', '', el('div', { class: 'hint' }, 'Vizuál se nepodařilo načíst (chyba v hlavičce).'));
   if (!isVideo && h) {
-    p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Reaguje na'),
+    add('drive', 'Reaguje na', el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Reaguje na'),
       el('div', { class: 'segbtns orange' }, ...DRIVES.map(([k, n]) =>
         el('button', { class: cur('drive') === k ? 'on' : '', onclick: () => { setP('drive', k); renderProps(); } }, n))),
       el('span')));
     for (const [k, label, min, max, tip] of UNIFIED) {
       const own = h.labels?.[k];
-      p.append(sliderRow(label, tip + (own ? ` · u tohoto vizuálu: ${own}` : ''), cur(k) as number, min, max, 0.01, v => v.toFixed(2), v => setP(k, v)));
+      add(k, label, sliderRow(label, tip + (own ? ` · u tohoto vizuálu: ${own}` : ''), cur(k) as number, min, max, 0.01, v => v.toFixed(2), v => setP(k, v)));
     }
   } else if (isVideo) {
-    p.append(el('div', { class: 'hint' }, 'Video hraje ve smyčce od začátku při každém spuštění. Na zvuk nereaguje; GLOW a STROBO fungují.'));
+    add('', '', el('div', { class: 'hint' }, 'Video hraje ve smyčce od začátku při každém spuštění. Na zvuk nereaguje; GLOW a STROBO fungují.'));
   }
   // GLOW + STROBO mají všechny klipy (i videa).
-  p.append(sliderRow('GLOW', 'záře kolem tohoto klipu (nezávisle na „Glow celku“)', clip.params.glow ?? 0, 0, 1, 0.01, v => v.toFixed(2), v => setP('glow', v, false)));
+  add('glow', 'GLOW', sliderRow('GLOW', 'záře kolem tohoto klipu (nezávisle na „Glow celku“)', clip.params.glow ?? 0, 0, 1, 0.01, v => v.toFixed(2), v => setP('glow', v, false)));
   const sMode: StrobeMode = clip.params.strobeMode ?? 'frames';
-  p.append(sliderRow('STROBO', 'blikání po snímcích: n snímků svítí, n snímků tma (Na úder: n snímků po každém úderu)', clip.params.strobe ?? 0, 0, 12, 1, strobeTxt, v => setP('strobe', v, false)));
-  p.append(el('div', { class: 'prow' }, el('span'),
-    el('div', { class: 'segbtns' }, ...([['frames', 'Pravidelně'], ['hit', 'Na úder']] as [StrobeMode, string][]).map(([m, n]) =>
-      el('button', { class: sMode === m ? 'on' : '', onclick: () => { setP('strobeMode', m, false); renderProps(); } }, n))),
-    el('span')));
+  add('strobe', 'STROBO (i režim Pravidelně / Na úder)',
+    sliderRow('STROBO', 'blikání po snímcích: n snímků svítí, n snímků tma (Na úder: n snímků po každém úderu)', clip.params.strobe ?? 0, 0, 12, 1, strobeTxt, v => setP('strobe', v, false)),
+    el('div', { class: 'prow' }, el('span'),
+      el('div', { class: 'segbtns' }, ...([['frames', 'Pravidelně'], ['hit', 'Na úder']] as [StrobeMode, string][]).map(([m, n]) =>
+        el('button', { class: sMode === m ? 'on' : '', onclick: () => { setP('strobeMode', m, false); renderProps(); } }, n))),
+      el('span')));
 
   if (!isVideo && h) {
     const ca = el('input', { type: 'color', value: cur('colA'), title: 'Barva A' }) as HTMLInputElement;
     const cb = el('input', { type: 'color', value: cur('colB'), title: 'Barva B' }) as HTMLInputElement;
     ca.oninput = () => setP('colA', ca.value); cb.oninput = () => setP('colB', cb.value);
-    p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Barvy'),
-      el('div', { class: 'colors' }, ca, cb,
-        el('button', { class: 'btn sm', title: 'Vrátit všechny hodnoty klipu na výchozí (z hlavičky vizuálu)', onclick: () => { clip.params = {}; send(); renderProps(); scheduleGrid(); } }, 'Výchozí')),
+    add('colors', 'Barvy', el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Barvy'), el('div', { class: 'colors' }, ca, cb), el('span')));
+    add('reset', 'Tlačítko Výchozí (vrátí hodnoty klipu)', el('div', { class: 'prow' }, el('span'),
+      el('div', { class: 'colors' }, el('button', { class: 'btn sm', title: 'Vrátit všechny hodnoty klipu na výchozí (z hlavičky vizuálu)', onclick: () => { clip.params = {}; send(); renderProps(); scheduleGrid(); } }, 'Výchozí')),
       el('span')));
     for (const q of h.params ?? []) {
       const v0 = clip.params.custom?.[q.name] ?? q.default;
-      p.append(sliderRow(q.label ?? q.name, '', v0, q.min ?? 0, q.max ?? 1, 0.01, v => v.toFixed(2), v => setP('custom', { ...(clip.params.custom ?? {}), [q.name]: v })));
+      add('custom:' + q.name, q.label ?? q.name, sliderRow(q.label ?? q.name, '', v0, q.min ?? 0, q.max ?? 1, 0.01, v => v.toFixed(2), v => setP('custom', { ...(clip.params.custom ?? {}), [q.name]: v })));
     }
   }
 
   if (isScene && h) {
-    p.append(el('span', { class: 'sect' }, '3D KAMERA'));
+    section = '3D KAMERA';
     const camDef = { ...CAM_DEFAULTS, ...(h.camera ?? {}) };
     for (const [k, label, min, max, tip] of CAM_ROWS) {
       const v0 = clip.params.cam?.[k] ?? camDef[k];
-      p.append(sliderRow(label, tip, v0, min, max, 0.01, v => v.toFixed(2), v => setP('cam', { ...(clip.params.cam ?? {}), [k]: v })));
+      add('cam:' + k, label, sliderRow(label, tip, v0, min, max, 0.01, v => v.toFixed(2), v => setP('cam', { ...(clip.params.cam ?? {}), [k]: v })));
     }
   }
 
-  p.append(el('span', { class: 'sect' }, 'VRSTVA'));
+  section = 'VRSTVA';
   const opv = el('span', { class: 'val mono' }, String(Math.round(l.opacity * 100)));
-  p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Průhlednost'),
+  add('layer:opacity', 'Průhlednost vrstvy', el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Průhlednost'),
     slim(l.opacity, 0, 1, 0.01, v => { l.opacity = v; opv.textContent = String(Math.round(v * 100)); send(); }, () => renderGrid()), opv));
-  p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Prolínání'),
+  add('layer:blend', 'Prolínání vrstvy', el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Prolínání'),
     el('div', { class: 'segbtns' }, ...BLENDS.map(b => el('button', { class: l.blend === b ? 'on' : '', onclick: () => { l.blend = b; commit(); } }, BLEND_NAME[b]))), el('span')));
-  p.append(el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Rozlišení'),
+  add('layer:scale', 'Rozlišení vrstvy', el('div', { class: 'prow' }, el('span', { class: 'plabel' }, 'Rozlišení'),
     el('div', { class: 'segbtns' }, ...([1, 0.5, 0.25] as LayerScale[]).map(v => el('button', { class: l.scale === v ? 'on' : '', onclick: () => { l.scale = v; commit(); } }, SCALE_NAME(v)))), el('span')));
+
+  propCatalog = entries.filter(e => e.id);
+  const nHidden = propCatalog.filter(e => hiddenProps.has(e.id)).length;
+  gear.textContent = nHidden ? `⚙ Zobrazit (skryto ${nHidden})` : '⚙ Zobrazit';
+  const shown = entries.filter(e => !e.id || !hiddenProps.has(e.id));
+  for (const sec of ['KLIP', '3D KAMERA', 'VRSTVA']) {
+    const rows = shown.filter(e => e.section === sec);
+    if (!rows.some(e => e.id)) continue; // sekce bez jediné viditelné vlastnosti se nekreslí (nápovědy samotné nestačí)
+    p.append(el('span', { class: 'sect' }, sec));
+    for (const e of rows) p.append(...e.nodes);
+  }
+  if (nHidden && !shown.some(e => e.id)) p.append(el('div', { class: 'hint' }, 'Všechny vlastnosti jsou skryté. ⚙ Zobrazit nahoře je zase zapne.'));
 }
+
+// ---------- skrývání properties (⚙ Zobrazit) ----------
+const HIDE_KEY = 'vj.hiddenProps';
+const hiddenProps = new Set<string>((() => { try { const a = JSON.parse(localStorage.getItem(HIDE_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => typeof x === 'string') : []; } catch { return []; } })());
+const saveHidden = () => { try { localStorage.setItem(HIDE_KEY, JSON.stringify([...hiddenProps])); } catch { /* nevadí */ } };
+interface PropEntry { id: string; label: string; section: string; nodes: HTMLElement[] }
+let propCatalog: PropEntry[] = [];
+const gear = el('button', { class: 'btn sm', style: 'flex:none;white-space:nowrap', id: 'propsGear', 'data-menu-anchor': '1', title: 'Vyber, které vlastnosti se v tomto panelu ukazují (skryté dál fungují s nastavenou hodnotou)' }, '⚙ Zobrazit') as HTMLButtonElement;
+gear.onclick = () => {
+  const m = openMenu(gear, 330);
+  const draw = () => {
+    m.textContent = '';
+    m.append(el('div', { class: 'mtitle' }, 'Které vlastnosti ukazovat (platí pro všechny klipy)'));
+    let sec = '';
+    for (const e of propCatalog) {
+      if (e.section !== sec) { sec = e.section; m.append(el('div', { class: 'msep' }), el('div', { class: 'mtitle' }, sec)); }
+      const cb = el('input', { type: 'checkbox', checked: !hiddenProps.has(e.id) || undefined,
+        onchange: (ev: Event) => { if ((ev.target as HTMLInputElement).checked) hiddenProps.delete(e.id); else hiddenProps.add(e.id); saveHidden(); renderProps(); draw(); } });
+      m.append(el('label', { class: 'mrow' }, cb, e.label));
+    }
+    m.append(el('div', { class: 'msep' }), el('div', { class: 'mrow' },
+      el('button', { class: 'btn sm', onclick: () => { hiddenProps.clear(); saveHidden(); renderProps(); draw(); } }, 'Zobrazit vše'),
+      el('span', { class: 'muted sm' }, 'Skryté vlastnosti dál platí, jen je nevidíš.')));
+  };
+  draw();
+};
 
 // ---------- zvuk ----------
 const bandEls: Record<string, { bar: HTMLElement; dot: HTMLElement; hit: number }> = {};

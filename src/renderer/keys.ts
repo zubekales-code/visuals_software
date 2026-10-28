@@ -9,7 +9,8 @@ const ZROW = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', '
 const FROW = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
 const shift = (r: string[]) => r.map(k => 'Shift+' + k);
 
-/** Řady kláves podle vrstvy (index 0 = Vrstva 1 dole). Horní vrstvy mají nejpohodlnější klávesy. */
+/** Řady kláves podle vrstvy v datech (index 0 = SPODNÍ řada). V pultu se vrstvy číslují shora (horní řada = Vrstva 1), klávesy jdou za řadou:
+ *  horní řada má vždy nejpohodlnější klávesy. Čísla v komentářích níže = číslování z doby, kdy se počítalo odspodu. */
 export const LAYER_KEYS: string[][] = [
   shift(FROW),   // Vrstva 1 (prostředí)  ⇧F1–⇧F10
   FROW,          // Vrstva 2              F1–F10

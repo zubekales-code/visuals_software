@@ -32,6 +32,7 @@ const api: VjApi = {
   fileUrl: p => ipcRenderer.invoke('file:url', p),
   displays: () => ipcRenderer.invoke('displays'),
   placeOutput: (id, fs) => ipcRenderer.send('output:place', id, fs),
+  setOutputVisible: v => ipcRenderer.send('output:visible', v),
   sendKey: k => ipcRenderer.send('key', k),
   onKey: on('key'),
   onDisplayHz: on('display-hz'),

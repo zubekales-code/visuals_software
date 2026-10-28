@@ -12,6 +12,7 @@ preload      ── src/main/preload.ts   jediné API oken (window.vj, typ VjApi
 ```
 Stav (`AppState`, src/shared/types.ts): 8 vrstev × 10 klipů + `colNames` (názvy sloupců). Klip = `{ content, params, name? }`, params přepisují výchozí hodnoty z hlavičky.
 Vrstva: `name?`, `on`, `opacity`, `scale`, `blend` (normal/add/screen), `active` = hrající sloupec. Kompozitor kreslí `activeClip(vrstva)`.
+Pořadí: `layers[0]` = SPODNÍ řada (kreslí se první). V pultu se vrstvy číslují shora (`layerNo(i) = layers.length - i`, horní řada = „Vrstva 1“); data, kreslení, sady i klávesy se kvůli číslování nezměnily.
 Sloupce: `state.column` = jediný aktivní sloupec; hrát smí jen `l.active === state.column` (`normalizePlay()` to vynutí).
 Logika v `types.ts` (testy `test/v05.test.ts`): `clickColumnLogic`, `clickClipLogic` (jiný sloupec = `clip.ready`), `startColumn`
 (připravené, jinak celý sloupec), `addColumn/deleteColumn/addLayer/deleteLayer`, `sanitizeGrid` (načtení autosave / sady).
@@ -27,6 +28,8 @@ Cesty: `BASE_DIR` = VISUALS SOFTWARE (když aplikace běží z `…\app` vedle s
 `stav.md` v repu = průběžný stav projektu; při startu se kopíruje do `VISUALS SOFTWARE\STAV\stav.md`.
 Tok: pult → `state` → main → výstup. Výstup → `audio-frame` (každý snímek) + `stats` (2×/s) → pult.
 Klávesy stisknuté ve výstupu jdou do pultu (`key`). Výstup je nezávislé okno: když pult zamrzne, obraz běží dál.
+Okno výstupu žije stále (počítá zvuk a obraz pro náhled v pultu). „Vypnout výstup“ = `hide()` (ne minimalizace); `OutputPlacement.visible` říká, jestli je vidět. Křížek okna ho jen skryje (`close` se ruší, dokud se aplikace nevypíná). Bez projektoru startuje skrytý; připojený projektor ho zapne, odpojený vypne. IPC `output:visible`.
+Skrývání vlastností klipu: `renderProps` skládá řádky do seznamu (`PropEntry` s pevným id), skryté id jsou v `localStorage` `vj.hiddenProps`; menu ⚙ Zobrazit.
 Náhled v pultu = stejný `Compositor` v malém rozlišení, krmený audio snímky z výstupu.
 
 ## Kompozitor (`src/renderer/engine/`)

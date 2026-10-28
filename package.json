@@ -1,6 +1,6 @@
 {
   "name": "visuals-software",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Vlastni VJ software (Electron + WebGL2). v0.5: jeden aktivni sloupec, pripravene klipy, pridat/smazat sloupce a vrstvy, layouty.",
   "private": true,
   "main": "dist/main.js",
