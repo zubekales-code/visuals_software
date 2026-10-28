@@ -8,6 +8,8 @@ Tahle verze je **test výkonu**. Ověřuje, jestli Legion (RTX 3060) utáhne 7 v
 2. Dej `start.bat` do složky `VISUALS SOFTWARE` a dvakrát na něj klikni.
    - Poprvé stáhne aplikaci do podsložky `app` a nainstaluje knihovny. Trvá to pár minut a GitHub se jednou zeptá na přihlášení.
    - Příště si sám stáhne novou verzi a spustí se.
+   - **Bez internetu** (klub bez Wi-Fi) spustí poslední staženou verzi a napíše „Novou verzi se nepodařilo stáhnout“. Poprvé je internet potřeba.
+   - Nová verze samotného `start.bat` se po zavření aplikace nakopíruje sama.
 3. Otevře se **pult** (ovládání, vlevo dole je náhled výstupu — ten jede vždy). Když je připojený projektor, výstup na něj skočí sám přes celou obrazovku; bez projektoru je výstup **vypnutý** (skryté okno) a zapneš ho v menu **Výstup**.
 
 ## Než spustíš test na Legionu
