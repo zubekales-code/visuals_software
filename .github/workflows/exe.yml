@@ -62,6 +62,6 @@ jobs:
         run: |
           $tag = "test-v$env:VER"
           $smoke = if (Test-Path smoke_summary.txt) { Get-Content smoke_summary.txt -Raw } else { "(zkouška se nespustila)" }
-          Set-Content -Path notes.md -Encoding utf8 -Value ("Testovací .exe (bez podpisu) ze stejného kódu jako start.bat. Návod je v PRECTI MNE.txt uvnitř zipu.`n`n### Zkouška spuštění na GitHubu (softwarová grafika)`n``````n" + $smoke + "`n``````")
+          Set-Content -Path notes.md -Encoding utf8 -Value ("Testovací .exe (bez podpisu) ze stejného kódu jako start.bat. Návod je v PRECTI MNE.txt uvnitř zipu.`n`n### Zkouška spuštění na GitHubu (softwarová grafika)`n```````n" + $smoke + "`n``````")
           gh release delete $tag --yes --cleanup-tag 2>$null
           gh release create $tag "release\VISUALS-$env:VER-win-x64.zip" --prerelease --target $env:GITHUB_SHA --title "Testovací .exe v$env:VER" --notes-file notes.md
