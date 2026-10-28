@@ -1,0 +1,15 @@
+# Sestavení .exe (Windows) — spouští GitHub Actions (.github/workflows/exe.yml), ne start.bat.
+appId: cz.zubek.visuals
+productName: VISUALS
+asar: false            # soubory aplikace leží normálně na disku (ffmpeg, základní balíček, stav.md)
+npmRebuild: false      # žádné nativní moduly
+directories:
+  output: release
+files:
+  - dist/**/*
+  - "!dist/test/**"
+  - content/**/*
+  - stav.md
+  - package.json
+win:
+  target: dir          # složka s VISUALS.exe; zip z ní udělá workflow

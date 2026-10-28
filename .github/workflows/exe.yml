@@ -1,0 +1,63 @@
+# Testovací .exe pro Windows: sestaví se na počítači s Windows od GitHubu a nahraje do Releases (předběžná verze).
+# Spuštění: Actions → „Sestavit .exe“ → Run workflow. start.bat ani větev main to nijak neovlivní.
+name: Sestavit .exe
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  exe:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc -p tsconfig.json
+      - run: npm test
+      - run: node build.mjs
+      - name: electron-builder (složka s VISUALS.exe)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # bez podpisu
+        run: npx --yes electron-builder@26.0.12 --win --x64 --config electron-builder.yml
+      - name: Zkouška spuštění sestaveného programu (--smoke, softwarová grafika)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $exe = "release\win-unpacked\VISUALS.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList "--smoke" -PassThru -NoNewWindow -RedirectStandardOutput smoke_out.txt -RedirectStandardError smoke_err.txt
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Output "SMOKE timeout" }
+          Get-Content smoke_out.txt -ErrorAction SilentlyContinue | Select-String -Pattern "^(UI|OUT|SMOKE|IMPORT|JS)" | ForEach-Object { $_.Line.Substring(0, [Math]::Min(600, $_.Line.Length)) }
+          Write-Output "exit=$($p.ExitCode)"
+          Get-ChildItem release\win-unpacked -Directory | Select-Object Name
+          if (Test-Path release\win-unpacked\zpravy) { Get-ChildItem release\win-unpacked\zpravy | Select-Object Name }
+          if (Test-Path release\win-unpacked\knihovna) { Get-ChildItem release\win-unpacked\knihovna -Recurse -File | Measure-Object | Select-Object Count }
+          # po zkoušce uklidit, ať v zipu nejsou testovací soubory
+          Remove-Item -Recurse -Force release\win-unpacked\zpravy, release\win-unpacked\knihovna, release\win-unpacked\STAV -ErrorAction SilentlyContinue
+      - name: Zip
+        shell: pwsh
+        run: |
+          $ver = (Get-Content package.json | ConvertFrom-Json).version
+          $dir = "release\VISUALS SOFTWARE EXE"
+          Move-Item release\win-unpacked $dir
+          Set-Content -Path "$dir\PRECTI MNE.txt" -Encoding utf8 -Value @"
+          VISUALS $ver - testovaci verze (.exe, bez podpisu)
+
+          1. Zip pred rozbalenim: pravy klik - Vlastnosti - zaskrtni Odblokovat - OK (pak se SmartScreen neozve).
+          2. Rozbal kamkoli (napr. Plocha\VISUALS), spust VISUALS.exe.
+          3. Knihovna, zpravy a STAV si program zalozi vedle sebe. Nova verze = rozbalit novy zip vedle a knihovnu zkopirovat.
+          4. Grafika: Windows - Nastaveni - Obrazovka - Grafika - pridej VISUALS.exe - Vysoky vykon.
+          "@
+          Compress-Archive -Path $dir -DestinationPath "release\VISUALS-$ver-win-x64.zip"
+          "VER=$ver" >> $env:GITHUB_ENV
+      - name: Nahrát do Releases (předběžná verze)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "test-v$env:VER"
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          gh release create $tag "release\VISUALS-$env:VER-win-x64.zip" --prerelease --target $env:GITHUB_SHA --title "Testovací .exe v$env:VER" --notes "Testovací .exe (bez podpisu) ze stejného kódu jako start.bat. Návod je v PRECTI MNE.txt uvnitř zipu."

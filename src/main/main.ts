@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync, watch, existsSync, copyFileSync, readFileSync
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { AppState, DisplayInfo, DisplaysInfo, OutputPlacement, ReportPayload } from '../shared/types';
-import { APP_DIR, BASE_DIR, LIB, DIRS, ensureLibrary, listLibrary, importFiles, listSady, saveSada, loadSada } from './library';
+import { APP_DIR, BASE_DIR, PACKAGED, LIB, DIRS, ensureLibrary, listLibrary, importFiles, listSady, saveSada, loadSada } from './library';
 
 // Hybridní notebooky: chceme výkonnou grafiku (RTX), ne integrovanou.
 app.commandLine.appendSwitch('force_high_performance_gpu');
@@ -362,6 +362,7 @@ app.on('window-all-closed', () => app.quit());
 /** stav.md z aplikace → VISUALS SOFTWARE\STAV\stav.md (po každé aktualizaci je tam aktuální stav). */
 function syncStav() {
   const src = join(APP_DIR, 'stav.md'), dstDir = join(BASE_DIR, 'STAV');
+  if (PACKAGED) try { mkdirSync(dstDir, { recursive: true }); } catch { /* nevadí */ }
   if (BASE_DIR === APP_DIR || !existsSync(src) || !existsSync(dstDir)) return;
   try { copyFileSync(src, join(dstDir, 'stav.md')); } catch { /* soubor otevřený jinde — nevadí */ }
 }

@@ -11,9 +11,14 @@ import type { ContentItem, ImportResult, SadaInfo } from '../shared/types';
 import { parseShaderHeader } from '../shared/shader-header';
 
 export const APP_DIR = app.getAppPath();
-/** Složka VISUALS SOFTWARE, když aplikace běží ze start.bat (…\VISUALS SOFTWARE\app); jinak složka aplikace. */
+/** Hlavní složka (knihovna, zpravy, STAV):
+ *  - sestavený program (.exe): složka, ve které leží VISUALS.exe,
+ *  - ze start.bat (…\VISUALS SOFTWARE\app): VISUALS SOFTWARE,
+ *  - jinak složka aplikace (vývoj, test v cloudu). */
+export const PACKAGED = app.isPackaged;
 export const BASE_DIR = process.env.VJ_ZAKLAD
-  || (basename(APP_DIR).toLowerCase() === 'app' && existsSync(join(dirname(APP_DIR), 'start.bat')) ? dirname(APP_DIR) : APP_DIR);
+  || (PACKAGED ? dirname(process.execPath)
+    : basename(APP_DIR).toLowerCase() === 'app' && existsSync(join(dirname(APP_DIR), 'start.bat')) ? dirname(APP_DIR) : APP_DIR);
 export const LIB = process.env.VJ_KNIHOVNA || join(BASE_DIR, 'knihovna');
 export const DIRS = { tvary: join(LIB, 'tvary'), sceny: join(LIB, '3d'), videa: join(LIB, 'videa'), zvuk: join(LIB, 'zvuk'), sady: join(LIB, 'sady') };
 
