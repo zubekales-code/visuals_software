@@ -1,5 +1,5 @@
 # Stav — VJ software
-Aktualizováno: 28. 10. 2026, 20:30 · aktuální verze **v0.6**
+Aktualizováno: 29. 10. 2026, 21:35 · aktuální verze **v0.6**
 
 Tento soubor je v repu (`stav.md`) a při každém spuštění aplikace se zkopíruje do `VISUALS SOFTWARE\STAV\stav.md`.
 Claude ho přepisuje na konci každé práce. Starší podoby jsou v historii GitHubu.
@@ -32,11 +32,21 @@ Paměť ve všech testech stálá (13–14 MB). Zpoždění zvukového řetězce
 | v0.2 | 23. 10. 2026 | Pult podle konceptu: horní lišta, mřížka 8 vrstev × 10 sloupců s náhledy klipů, vlastnosti klipu, zvuk, prolínání Normál/Add/Screen, zámek, klávesy po řadách, písma offline |
 | v0.1 | 23. 10. 2026 | Základ Etapy 0: Electron + WebGL2, pult + výstupní okno, 8 vrstev s alfou, glow, video WebM s alfou, zvuk (demo / wav / line-in), test výkonu se zprávou, `start.bat`, 8 vizuálů ze sandboxu |
 
+## Paralelní předběžné testování .exe
+Vedle `start.bat` se zkouší i testovací `VISUALS.exe` (zamčená verze, sestavená na GitHubu). Sem se zapisuje, co se při tom najde — nová zjištění nahoře.
+
+| Kdy | Kde | Verze | Co se stalo | Příčina / stav |
+|---|---|---|---|---|
+| 29. 10. 21:17–21:27 | notebook `laptop-o17h7u3o` (RTX 3060 Laptop), složka `C:\Users\zubek\OneDrive\Desktop\VISUALS SOFTWARE EXE`, bez projektoru | test-v0.6.0 | **Ukazatel fps hlásí ~1 fps** (v záznamu „běží: 0 fps“), přitom náhled v pultu jde plynule | **Chyba v0.6:** bez projektoru startuje výstup skrytý a Windows skrytému oknu dovolí jen ~1 snímek za sekundu. Ukazatel fps měří to skryté okno; náhled v pultu se kreslí sám, proto je plynulý. Obejití: Výstup → Zapnout výstup (okno odsunout, neminimalizovat). Oprava navržena, čeká na pokyn. |
+| 29. 10. | dtto | test-v0.6.0 | **Zvuk PC začal reagovat až asi po 2 minutách** | Podle `chyby.txt` se zdroj připojil za ~1 s (21:20:25 → 21:20:26), ale rozbor zvuku běží ve skrytém výstupu jen ~1× za sekundu → tvary skoro nereagují a hlídač zvuku ho každých ~30 s znovu připojuje. Stejná příčina jako 1 fps. Po opravě znovu změřit. |
+| 29. 10. | dtto | test-v0.6.0 | **`VISUALS.exe` se otevíral asi 1 minutu** | Neověřeno. Záznam aplikace začíná až ve chvíli, kdy se spustila (start 21:17:31 → výstup 21:17:39 → pult 21:17:43, tedy ~12 s); zbytek čekání je před spuštěním. Podezření: Windows Defender / SmartScreen kontroluje nepodepsaný 250MB `.exe` a složka leží v **OneDrive** (synchronizace). Vyzkoušet: zkopírovat složku mimo OneDrive (např. `C:\VISUALS`), spustit 2× po sobě a změřit stopkami. |
+
 ## Ověřeno
 - **Na PC uživatele (desktop, RTX 4080 SUPER, Claude ovládal pult):** v0.5 běží 58–60 fps; přepnutí sloupce pustí jen připravený klip; klik na klip v jiném sloupci = PŘIPRAVEN; přejmenování pravým klikem; zmenšení 50 / 75 %; + / − sloupce s posuvníkem; menu Layout a Výstup; **Zvuk PC se na Windows připojí** (zeleně „Poslouchám: zvuk tohoto PC“, po startu za ~1 s).
 - **Na Legionu (28. 10.):** Git + Node.js nainstalované, `start.bat` stáhl v0.5, aplikace kreslí na **RTX 3060** (Vysoký výkon pro `electron.exe` zabral), test výkonu se zprávou funguje, paměť stálá. Výkon GPU s rezervou (viz Měření).
 - **.exe na Windows (GitHub, softwarová grafika):** sestavený `VISUALS.exe` se spustí, projde automatický test pultu i výstupu (SMOKE OK), založí si `knihovna` (15 souborů), `zpravy`, `STAV` vedle sebe.
 - V cloudu: 17 testů logiky + automatický test pultu a výstupu (4 3D scény, GLOW, STROBO), 0 chyb.
+- **Zjištěno (.exe, 29. 10.):** skrytý výstup = ~1 fps a zvuk skoro nereaguje (viz Paralelní předběžné testování .exe).
 - **Neověřeno (.exe):** běh na RTX (Grafika → Vysoký výkon pro `VISUALS.exe`), výkon proti `start.bat`, převod videa (ffmpeg) z .exe, SmartScreen / antivir na Legionu.
 - **Neověřeno (start.bat):** spuštění bez internetu a samoaktualizace (dávka pro Windows nejde vyzkoušet v cloudu) → vyzkoušet: vypnout Wi-Fi, spustit `start.bat`.
 - **Neověřeno (v0.6):** skryté okno výstupu na Windows s RTX — běží dál obraz a zvuk pro náhled v pultu? (v cloudu s SwiftShader jen potvrzeno, že statistiky chodí dál) · **Zvuk PC** se skrytým výstupem · test výkonu se skrytým výstupem (nemusí mít skutečný rytmus displeje, proto varování; měř se zapnutým výstupem) · projektor: automatické zapnutí při připojení a vypnutí při odpojení.
@@ -44,6 +54,8 @@ Paměť ve všech testech stálá (13–14 MB). Zpoždění zvukového řetězce
 
 ## Čeká nás
 - [x] **Krok 0:** na Legionu Git + Node.js LTS, `start.bat` (v0.5), `electron.exe` → Vysoký výkon, displej 60 Hz
+- [ ] **Opravit skrytý výstup** (čeká na pokyn): vypnutý výstup musí dál počítat zvuk 60× za s (bez kreslení) a fps ukazovat z toho, co je opravdu vidět · pak nové testovací .exe a znovu změřit dobu, než reaguje Zvuk PC
+- [ ] **.exe se otevírá ~1 min:** zkusit složku mimo OneDrive, změřit 1. a 2. spuštění
 - [ ] **Najít příčinu zahozených snímků** (od nejlevnějšího, vždy Sestava brány → 1 min):
   - [ ] **.exe na stolním PC:** spustit `Desktop\VISUALS\VISUALS SOFTWARE EXE\VISUALS.exe`, nastavit mu Vysoký výkon, porovnat s `start.bat` · na Legion: zip z Releases (nebo z `Desktop\VISUALS` přes USB) → Vlastnosti → Odblokovat → rozbalit
   - [ ] **Legion: jednou ručně** zkopírovat `app\start.bat` do `VISUALS SOFTWARE` (nahradit) — starý `start.bat` se sám aktualizovat neumí; pak vyzkoušet s vypnutou Wi-Fi
